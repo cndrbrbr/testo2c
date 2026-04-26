@@ -240,7 +240,8 @@ The simulation agent imports `orbitalc2core/remotecontrol/client` and `orbitalc2
 | Component | Source |
 |-----------|--------|
 | OrbitalC2Core node image | Built from `../orbitalc2core` (local); pre-built at [`cndrbrbr/orbital2core`](https://hub.docker.com/r/cndrbrbr/orbital2core) |
-| ADATP-3 adapter image | Built from `../orbitalc2core/deploy/Dockerfile.adatp3` |
+| ADATP-3 adapter image | Built from `../orbitalc2core/deploy/Dockerfile.adatp3`; pre-built at [`cndrbrbr/orbital2core-adatp3`](https://hub.docker.com/r/cndrbrbr/orbital2core-adatp3) |
+| Link-16 adapter image | Built from `../orbitalc2core/deploy/Dockerfile.link16`; pre-built at [`cndrbrbr/orbital2core-link16`](https://hub.docker.com/r/cndrbrbr/orbital2core-link16) |
 | NATS | `nats:2-alpine` (Docker Hub) |
 | Go | 1.22+ (agent only, `CGO_ENABLED=0`) |
 
