@@ -60,9 +60,9 @@ var scenarioMap = map[string]*scenario{
 		name: "Central Europe", center: [2]float64{51.163375, 10.447683},
 		bounds: bbox{47, 55, 6, 15}, maxSpeedM: 2000,
 		defs: [3]unitDef{
-			{name: "1PzGrenBtl212", sidc: "SFGPUCD--------", side: "FRIENDLY", echelon: "BATTALION", equip: "3XIFV,2XHMMWV"},
-			{name: "PzBtl203",      sidc: "SFGPUCAT-------", side: "FRIENDLY", echelon: "BATTALION", equip: "14XMBT,2XARV"},
-			{name: "OPFOR-Mot-1",   sidc: "SHGPUCF--------", side: "HOSTILE",  echelon: "COMPANY",   equip: "8XBMP"},
+			{name: "1PzGrenBtl212", sidc: "SFGPUCI--------", side: "FRIENDLY", echelon: "BATTALION", equip: "3XIFV,2XHMMWV"},
+			{name: "PzBtl203",      sidc: "SFGPUCA--------", side: "FRIENDLY", echelon: "BATTALION", equip: "14XMBT,2XARV"},
+			{name: "OPFOR-Mot-1",   sidc: "SHGPUCI--------", side: "HOSTILE",  echelon: "COMPANY",   equip: "8XBMP"},
 		},
 	},
 	"north-sea": {
@@ -71,7 +71,7 @@ var scenarioMap = map[string]*scenario{
 		defs: [3]unitDef{
 			{name: "MarBtl1",    sidc: "SFGPUCI--------", side: "FRIENDLY", echelon: "BATTALION", equip: "3XMPV"},
 			{name: "KpFla-1",    sidc: "SFGPUAD--------", side: "FRIENDLY", echelon: "COMPANY",   equip: "2XFLAK"},
-			{name: "OPFOR-Coast",sidc: "SHGPUCF--------", side: "HOSTILE",  echelon: "PLATOON",   equip: "4XBOAT"},
+			{name: "OPFOR-Coast",sidc: "SHGPUCI--------", side: "HOSTILE",  echelon: "PLATOON",   equip: "4XBOAT"},
 		},
 	},
 	"baltic": {
@@ -80,16 +80,16 @@ var scenarioMap = map[string]*scenario{
 		defs: [3]unitDef{
 			{name: "NATO-BG-1",   sidc: "SFGPUCI--------", side: "FRIENDLY", echelon: "BATTALION", equip: "6XIFV"},
 			{name: "NATO-Art-1",  sidc: "SFGPUUA--------", side: "FRIENDLY", echelon: "BATTALION", equip: "8XSPH"},
-			{name: "OPFOR-Arm-1", sidc: "SHGPUCAT-------", side: "HOSTILE",  echelon: "COMPANY",   equip: "10XMBT"},
+			{name: "OPFOR-Arm-1", sidc: "SHGPUCA--------", side: "HOSTILE",  echelon: "COMPANY",   equip: "10XMBT"},
 		},
 	},
 	"alpine": {
 		name: "Alpine", center: [2]float64{47.2, 12.0},
 		bounds: bbox{46, 48, 9, 15}, maxSpeedM: 800,
 		defs: [3]unitDef{
-			{name: "GebJgBtl231", sidc: "SFGPUCL--------", side: "FRIENDLY", echelon: "BATTALION", equip: "3XIFV"},
+			{name: "GebJgBtl231", sidc: "SFGPUCI--------", side: "FRIENDLY", echelon: "BATTALION", equip: "3XIFV"},
 			{name: "Pi-Kp-5",     sidc: "SFGPUCI--------", side: "FRIENDLY", echelon: "COMPANY",   equip: "2XAEV"},
-			{name: "OPFOR-Mtn-1", sidc: "SHGPUCF--------", side: "HOSTILE",  echelon: "COMPANY",   equip: "4XBMP"},
+			{name: "OPFOR-Mtn-1", sidc: "SHGPUCI--------", side: "HOSTILE",  echelon: "COMPANY",   equip: "4XBMP"},
 		},
 	},
 }
@@ -351,14 +351,16 @@ func (a *agent) step() {
 
 	a.log.add(logEntry{Time: now(), Agent: a.cfg.agentID, Event: "cycle_start", Detail: fmt.Sprintf("cycle=%d", cycle)})
 
-	// Move units
-	a.moveUnits()
+	// Each cycle moves and posts exactly one unit (round-robin), creating a
+	// "drop in" effect: one new symbol appears on the map every interval.
+	unitIdx := (cycle - 1) % len(a.units)
+	a.moveUnit(unitIdx)
 
 	ctx := context.Background()
 
-	// Post features to peer orbital nodes
+	// Post the single unit to peer orbital nodes
 	for i, peerURL := range a.cfg.peerOrbitalURLs {
-		err := a.postFeatures(ctx, peerURL)
+		err := a.postFeature(ctx, peerURL, unitIdx)
 		a.mu.Lock()
 		if err != nil {
 			a.stats[i].errors++
@@ -367,7 +369,7 @@ func (a *agent) step() {
 			ok := false
 			a.log.add(logEntry{Time: now(), Agent: a.cfg.agentID, Event: "features", Detail: peerURL, OK: &ok})
 		} else {
-			a.stats[i].sent += len(a.units)
+			a.stats[i].sent++
 			a.mu.Unlock()
 			ok := true
 			a.log.add(logEntry{Time: now(), Agent: a.cfg.agentID, Event: "features", Detail: peerURL, OK: &ok})
@@ -396,63 +398,72 @@ func (a *agent) step() {
 	a.log.add(logEntry{Time: now(), Agent: a.cfg.agentID, Event: "cycle_done", Detail: fmt.Sprintf("cycle=%d", cycle)})
 }
 
-// moveUnits advances each unit by a random bearing/distance step.
-func (a *agent) moveUnits() {
+// moveUnit advances one unit by a random bearing/distance step.
+func (a *agent) moveUnit(idx int) {
 	b := a.scen.bounds
-	for _, u := range a.units {
-		// Gradually change bearing ±30° per cycle
-		u.bearing += (a.rng.Float64()*60 - 30)
-		if u.bearing < 0 {
-			u.bearing += 360
-		}
-		if u.bearing >= 360 {
-			u.bearing -= 360
-		}
-		dist := (0.3 + a.rng.Float64()*0.7) * a.scen.maxSpeedM
-		newLat, newLon := movePoint(u.lat, u.lon, u.bearing, dist)
+	u := a.units[idx]
+	u.bearing += (a.rng.Float64()*60 - 30)
+	if u.bearing < 0 {
+		u.bearing += 360
+	}
+	if u.bearing >= 360 {
+		u.bearing -= 360
+	}
+	dist := (0.3 + a.rng.Float64()*0.7) * a.scen.maxSpeedM
+	newLat, newLon := movePoint(u.lat, u.lon, u.bearing, dist)
 
-		// Reflect bearing if out of bounds
-		if newLat < b.minLat || newLat > b.maxLat || newLon < b.minLon || newLon > b.maxLon {
-			u.bearing = math.Mod(u.bearing+180, 360)
-			newLat, newLon = movePoint(u.lat, u.lon, u.bearing, dist*0.5)
-		}
-		u.lat = clampf(newLat, b.minLat, b.maxLat)
-		u.lon = clampf(newLon, b.minLon, b.maxLon)
+	if newLat < b.minLat || newLat > b.maxLat || newLon < b.minLon || newLon > b.maxLon {
+		u.bearing = math.Mod(u.bearing+180, 360)
+		newLat, newLon = movePoint(u.lat, u.lon, u.bearing, dist*0.5)
+	}
+	u.lat = clampf(newLat, b.minLat, b.maxLat)
+	u.lon = clampf(newLon, b.minLon, b.maxLon)
 
-		// Slowly vary strength (±1 per cycle)
-		if a.rng.Intn(3) == 0 {
-			u.strength += a.rng.Intn(3) - 1
-			u.strength = int(clampf(float64(u.strength), 5, 35))
-		}
+	if a.rng.Intn(3) == 0 {
+		u.strength += a.rng.Intn(3) - 1
+		u.strength = int(clampf(float64(u.strength), 5, 35))
 	}
 }
 
 // ── Feature API posting ───────────────────────────────────────────────────────
 
-func (a *agent) postFeatures(ctx context.Context, nodeURL string) error {
+// clearFeatures deletes all of this agent's features from all peer nodes.
+func (a *agent) clearFeatures(ctx context.Context) {
+	for i := range a.units {
+		fID := featureID(a.cfg.agentID, i)
+		for _, peerURL := range a.cfg.peerOrbitalURLs {
+			req, _ := http.NewRequestWithContext(ctx, http.MethodDelete, peerURL+"/v1/features/"+fID, nil)
+			resp, err := a.http.Do(req)
+			if err == nil {
+				resp.Body.Close()
+			}
+		}
+	}
+}
+
+func (a *agent) postFeature(ctx context.Context, nodeURL string, unitIdx int) error {
+	u := a.units[unitIdx]
 	lID := layerID(a.cfg.agentID)
-	for i, u := range a.units {
-		gj := map[string]any{
-			"type": "Feature",
-			"geometry": map[string]any{
-				"type":        "Point",
-				"coordinates": []float64{u.lon, u.lat},
-			},
-			"properties": map[string]any{
-				"sidc":        u.sidc,
-				"designation": fmt.Sprintf("A%d %s", a.cfg.agentID, u.name),
-			},
-		}
-		gjRaw, _ := json.Marshal(gj)
-		feat := map[string]any{
-			"id":      featureID(a.cfg.agentID, i),
-			"layerId": lID,
-			"kind":    5, // KindTacticalSymbol
-			"geoJson": json.RawMessage(gjRaw),
-		}
-		if _, err := a.httpPost(ctx, nodeURL+"/v1/features", feat); err != nil {
-			return fmt.Errorf("feature %d: %w", i, err)
-		}
+	gj := map[string]any{
+		"type": "Feature",
+		"geometry": map[string]any{
+			"type":        "Point",
+			"coordinates": []float64{u.lon, u.lat},
+		},
+		"properties": map[string]any{
+			"sidc":        u.sidc,
+			"designation": fmt.Sprintf("A%d %s", a.cfg.agentID, u.name),
+		},
+	}
+	gjRaw, _ := json.Marshal(gj)
+	feat := map[string]any{
+		"id":      featureID(a.cfg.agentID, unitIdx),
+		"layerId": lID,
+		"kind":    5,
+		"geoJson": json.RawMessage(gjRaw),
+	}
+	if _, err := a.httpPost(ctx, nodeURL+"/v1/features", feat); err != nil {
+		return fmt.Errorf("feature %d: %w", unitIdx, err)
 	}
 	return nil
 }
@@ -765,6 +776,10 @@ func main() {
 	// Create layers on all nodes
 	slog.Info("setting up layers on all nodes")
 	a.setupLayers(ctx)
+
+	// Wipe any stale features so the browser sees a clean drop-in sequence
+	slog.Info("clearing stale features from peer nodes")
+	a.clearFeatures(ctx)
 
 	// Start control API in background
 	go a.serveControl(cfg.listen)

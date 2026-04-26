@@ -175,7 +175,7 @@ services:
       PEER_ORBITAL_URLS: "http://orbital-node2:8080,http://orbital-node3:8080"
       PEER_ADATP3_URLS:  "http://adatp3-adapter-2:9180,http://adatp3-adapter-3:9180"
       SCENARIO:          "central-europe"
-      SIM_INTERVAL:      "10"
+      SIM_INTERVAL:      "3"
       SIM_BURST:         "10"
       SIM_AUTOSTART:     "true"
     networks: [sim]
@@ -201,7 +201,7 @@ services:
       PEER_ORBITAL_URLS: "http://orbital-node1:8080,http://orbital-node3:8080"
       PEER_ADATP3_URLS:  "http://adatp3-adapter-1:9180,http://adatp3-adapter-3:9180"
       SCENARIO:          "central-europe"
-      SIM_INTERVAL:      "10"
+      SIM_INTERVAL:      "3"
       SIM_BURST:         "10"
       SIM_AUTOSTART:     "true"
     networks: [sim]
@@ -227,7 +227,7 @@ services:
       PEER_ORBITAL_URLS: "http://orbital-node1:8080,http://orbital-node2:8080"
       PEER_ADATP3_URLS:  "http://adatp3-adapter-1:9180,http://adatp3-adapter-2:9180"
       SCENARIO:          "central-europe"
-      SIM_INTERVAL:      "10"
+      SIM_INTERVAL:      "3"
       SIM_BURST:         "10"
       SIM_AUTOSTART:     "true"
     networks: [sim]

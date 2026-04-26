@@ -2,7 +2,7 @@
 
 Simulation and integration-test harness for [OrbitalC2Core](https://github.com/cndrbrbr/orbitalc2core).
 
-Spins up a 3-node OrbitalC2Core cluster and attaches one simulation agent per node. Each agent generates randomised NATO ADATP-3 messages and injects them into the **other two** nodes, creating a continuously evolving tactical picture across all three map displays.
+Spins up a 3-node OrbitalC2Core cluster and attaches one simulation agent per node. Each cycle, each agent moves one of its 3 units and posts the updated position to the **other two** nodes via the Feature REST API — creating a "drop-in" effect where one new tactical symbol appears every `SIM_INTERVAL` seconds. In parallel, each agent generates a burst of randomised NATO ADATP-3 messages and injects them into the other two nodes' ADATP-3 adapters.
 
 ---
 
@@ -44,7 +44,9 @@ Configuration via environment variables:
 | `OWN_ORBITAL_URL` | — | Base URL of this agent's own orbital-node |
 | `PEER_ADATP3_URLS` | — | Comma-separated ADATP-3 adapter URLs of the other two nodes |
 | `SCENARIO` | `central-europe` | Scenario profile (see F-07) |
-| `SIM_INTERVAL` | `10` | Seconds between simulation cycles |
+| `ALL_ORBITAL_URLS` | — | Comma-separated URLs of all 3 nodes (layer setup at startup) |
+| `PEER_ORBITAL_URLS` | — | Comma-separated URLs of the 2 peer nodes (feature posting) |
+| `SIM_INTERVAL` | `3` | Seconds between simulation cycles |
 | `SIM_BURST` | `10` | Number of ADATP-3 messages generated per cycle |
 | `SIM_AUTOSTART` | `true` | Start the loop automatically on container start |
 | `SIM_LISTEN` | `:9200` | Control API listen address |
@@ -90,26 +92,29 @@ Delivery uses `POST /adatp3/message` with a JSON envelope (`{"messages": [...]}`
 
 ---
 
-### F-05 — Unit Movement Simulation
+### F-05 — Unit Movement Simulation and Drop-In Effect
 
-Each agent owns 3 "moving units" (9 units total across the cluster). Between cycles each unit advances along a randomly chosen bearing by a randomly chosen distance (100 m – 2 km). This produces natural-looking patrol and movement patterns on the map.
+Each agent owns 3 units (9 units total across the cluster). Each cycle, one unit is selected round-robin, moved, and posted to the two peer nodes — so exactly one tactical symbol appears or moves on the map every `SIM_INTERVAL` seconds. This "drop-in" pacing makes it easy to observe individual updates.
 
-- Positions are clamped to the scenario bounding box so units never wander off-map.
-- Each unit's OWNSITREP `STRENGTH` and `STATUS` fields also evolve slowly across cycles to reflect attrition and recovery.
-- Unit names and echelons are drawn from the scenario profile (see F-07) and remain consistent across cycles so force elements update in place rather than accumulating duplicates.
+- Units advance along a randomly drifting bearing (±30° per cycle) by 30–100 % of the scenario's `maxSpeedM` per cycle.
+- Positions are clamped to the scenario bounding box; units that would leave the box reverse bearing.
+- `STRENGTH` evolves slowly (±1 per cycle, clamped 5–35) to simulate attrition and resupply.
+- Feature IDs are deterministic UUIDs derived from `(agentID, unitIndex)` — the same feature is upserted on every cycle, so the map updates in-place rather than accumulating duplicates.
+- At startup each agent calls `DELETE /v1/features/{id}` for all its features on all peer nodes to clear any stale state from previous runs before the new drop-in sequence begins.
 
 ---
 
-### F-06 — Direct Orbital API Control
+### F-06 — Direct Orbital Feature API
 
-Agents use the `orbitalc2core/remotecontrol/client` Go package directly for operations that go beyond ADATP-3 injection:
+Agents post tactical symbols directly to the OrbitalC2Core Feature REST API (not via ADATP-3):
 
 | Action | When | API call |
 |--------|------|----------|
-| Create simulation layer | Startup | `POST /v1/layers` — one named `"Sim-Agent-N"` layer per agent |
-| Set map center | Startup | `POST /v1/map/center` — positions map at scenario area |
-| Clean up features | `/sim/reset` | `DELETE /v1/features/{id}` for all agent-created features |
-| Read COP snapshot | `/sim/status` | `GET /api/v1/common-operational-picture` — counts entities |
+| Create simulation layer | Startup | `POST /v1/layers` on **all** 3 nodes — one `"Sim-Agent-N"` layer per agent, deterministic UUID |
+| Post unit position | Each cycle | `POST /v1/features` on both peer nodes — GeoJSON `Feature` with `sidc`, `designation` |
+| Set map center | Startup | `POST /v1/map/center` on own node — positions all UIs at the scenario area |
+| Clear stale features | Startup | `DELETE /v1/features/{id}` on peer nodes for all owned feature IDs |
+| Clean up features | `/sim/reset` | Same `DELETE` calls; also resets unit positions to scenario start |
 
 ---
 
@@ -119,10 +124,12 @@ Built-in scenarios selected via the `SCENARIO` environment variable:
 
 | ID | Area | Center | Bounding box | Character |
 |----|------|--------|-------------|-----------|
-| `central-europe` | Germany | 51.16°N 10.45°E | 47–55°N, 6–15°E | Mixed land; Heer units, IFV/HMMWV platforms |
-| `north-sea` | Helgoland/Kiel | 54.18°N 7.89°E | 53–56°N, 7–12°E | Littoral; Marine and coastal units |
-| `baltic` | Baltic Sea | 56.10°N 20.00°E | 54–58°N, 15–25°E | Land/sea; mixed NATO and OPFOR units |
-| `alpine` | Austrian Alps | 47.20°N 12.00°E | 46–48°N, 9–15°E | Mountain; reduced movement speed |
+| `central-europe` | Germany | 51.16°N 10.45°E | 47–55°N, 6–15°E | 1PzGrenBtl212 (IFV), PzBtl203 (MBT), OPFOR-Mot-1; max 2 km/cycle |
+| `north-sea` | Helgoland/Kiel | 54.18°N 7.89°E | 53–56°N, 7–12°E | MarBtl1, KpFla-1 (AAA), OPFOR-Coast; max 3 km/cycle |
+| `baltic` | Baltic Sea | 56.10°N 20.00°E | 54–58°N, 15–25°E | NATO-BG-1, NATO-Art-1 (SPH), OPFOR-Arm-1; max 2.5 km/cycle |
+| `alpine` | Austrian Alps | 47.20°N 12.00°E | 46–48°N, 9–15°E | GebJgBtl231, Pi-Kp-5, OPFOR-Mtn-1; max 0.8 km/cycle |
+
+All SIDCs use the 15-character APP-6B format compatible with milsymbol 2.x.
 
 Each profile defines: bounding box, map center, unit name prefixes, echelon set, side distribution (blue/red split), and maximum movement speed per cycle.
 
