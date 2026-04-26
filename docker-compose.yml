@@ -1,0 +1,249 @@
+# testo2c — 3-node OrbitalC2Core simulation cluster
+#
+# Starts:  3 orbital-node instances  (ports 8081–8083)
+#          3 adatp3-adapters          (internal only)
+#          3 sim-agents               (control APIs 9201–9203)
+#          1 NATS JetStream           (inter-node sync)
+#
+# Usage:
+#   docker compose up --build
+#
+# Prerequisites: orbitalc2core repo must be a sibling directory:
+#   ../orbitalc2core/
+
+services:
+
+  # ── NATS JetStream ──────────────────────────────────────────────────────────
+  nats:
+    image: nats:2-alpine
+    restart: unless-stopped
+    command: ["--js", "--http_port", "8222"]
+    networks: [sim]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/healthz | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ── OrbitalC2Core nodes ─────────────────────────────────────────────────────
+  orbital-node1:
+    build:
+      context: ../orbitalc2core
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    environment:
+      NODE_ID:    "00000000-0000-0000-0000-000000000001"
+      NATS_URL:   "nats://nats:4222"
+      MAP_CENTER: "51.163375,10.447683"
+      SIT_ID:     "sim"
+    volumes:
+      - node1-data:/data
+    networks: [sim]
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  orbital-node2:
+    build:
+      context: ../orbitalc2core
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8082:8080"
+    environment:
+      NODE_ID:    "00000000-0000-0000-0000-000000000002"
+      NATS_URL:   "nats://nats:4222"
+      MAP_CENTER: "51.163375,10.447683"
+      SIT_ID:     "sim"
+    volumes:
+      - node2-data:/data
+    networks: [sim]
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  orbital-node3:
+    build:
+      context: ../orbitalc2core
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8083:8080"
+    environment:
+      NODE_ID:    "00000000-0000-0000-0000-000000000003"
+      NATS_URL:   "nats://nats:4222"
+      MAP_CENTER: "51.163375,10.447683"
+      SIT_ID:     "sim"
+    volumes:
+      - node3-data:/data
+    networks: [sim]
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── ADATP-3 adapters (one per node) ────────────────────────────────────────
+  adatp3-adapter-1:
+    build:
+      context: ../orbitalc2core
+      dockerfile: deploy/Dockerfile.adatp3
+    restart: unless-stopped
+    environment:
+      ORBITAL_SERVER: "http://orbital-node1:8080"
+      ADATP3_LISTEN:  ":9180"
+    networks: [sim]
+    depends_on:
+      orbital-node1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9180/health | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  adatp3-adapter-2:
+    build:
+      context: ../orbitalc2core
+      dockerfile: deploy/Dockerfile.adatp3
+    restart: unless-stopped
+    environment:
+      ORBITAL_SERVER: "http://orbital-node2:8080"
+      ADATP3_LISTEN:  ":9180"
+    networks: [sim]
+    depends_on:
+      orbital-node2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9180/health | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  adatp3-adapter-3:
+    build:
+      context: ../orbitalc2core
+      dockerfile: deploy/Dockerfile.adatp3
+    restart: unless-stopped
+    environment:
+      ORBITAL_SERVER: "http://orbital-node3:8080"
+      ADATP3_LISTEN:  ":9180"
+    networks: [sim]
+    depends_on:
+      orbital-node3:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9180/health | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ── Simulation agents (one per node) ───────────────────────────────────────
+  sim-agent-1:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.sim-agent
+    restart: unless-stopped
+    ports:
+      - "9201:9200"
+    environment:
+      AGENT_ID:          "1"
+      OWN_ORBITAL_URL:   "http://orbital-node1:8080"
+      ALL_ORBITAL_URLS:  "http://orbital-node1:8080,http://orbital-node2:8080,http://orbital-node3:8080"
+      PEER_ORBITAL_URLS: "http://orbital-node2:8080,http://orbital-node3:8080"
+      PEER_ADATP3_URLS:  "http://adatp3-adapter-2:9180,http://adatp3-adapter-3:9180"
+      SCENARIO:          "central-europe"
+      SIM_INTERVAL:      "10"
+      SIM_BURST:         "10"
+      SIM_AUTOSTART:     "true"
+    networks: [sim]
+    depends_on:
+      orbital-node1:
+        condition: service_healthy
+      adatp3-adapter-2:
+        condition: service_healthy
+      adatp3-adapter-3:
+        condition: service_healthy
+
+  sim-agent-2:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.sim-agent
+    restart: unless-stopped
+    ports:
+      - "9202:9200"
+    environment:
+      AGENT_ID:          "2"
+      OWN_ORBITAL_URL:   "http://orbital-node2:8080"
+      ALL_ORBITAL_URLS:  "http://orbital-node1:8080,http://orbital-node2:8080,http://orbital-node3:8080"
+      PEER_ORBITAL_URLS: "http://orbital-node1:8080,http://orbital-node3:8080"
+      PEER_ADATP3_URLS:  "http://adatp3-adapter-1:9180,http://adatp3-adapter-3:9180"
+      SCENARIO:          "central-europe"
+      SIM_INTERVAL:      "10"
+      SIM_BURST:         "10"
+      SIM_AUTOSTART:     "true"
+    networks: [sim]
+    depends_on:
+      orbital-node2:
+        condition: service_healthy
+      adatp3-adapter-1:
+        condition: service_healthy
+      adatp3-adapter-3:
+        condition: service_healthy
+
+  sim-agent-3:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.sim-agent
+    restart: unless-stopped
+    ports:
+      - "9203:9200"
+    environment:
+      AGENT_ID:          "3"
+      OWN_ORBITAL_URL:   "http://orbital-node3:8080"
+      ALL_ORBITAL_URLS:  "http://orbital-node1:8080,http://orbital-node2:8080,http://orbital-node3:8080"
+      PEER_ORBITAL_URLS: "http://orbital-node1:8080,http://orbital-node2:8080"
+      PEER_ADATP3_URLS:  "http://adatp3-adapter-1:9180,http://adatp3-adapter-2:9180"
+      SCENARIO:          "central-europe"
+      SIM_INTERVAL:      "10"
+      SIM_BURST:         "10"
+      SIM_AUTOSTART:     "true"
+    networks: [sim]
+    depends_on:
+      orbital-node3:
+        condition: service_healthy
+      adatp3-adapter-1:
+        condition: service_healthy
+      adatp3-adapter-2:
+        condition: service_healthy
+
+volumes:
+  node1-data:
+  node2-data:
+  node3-data:
+
+networks:
+  sim:
+    driver: bridge

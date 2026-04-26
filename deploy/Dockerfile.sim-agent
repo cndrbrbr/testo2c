@@ -1,0 +1,11 @@
+FROM golang:1.22-alpine AS builder
+WORKDIR /src
+COPY go.mod ./
+COPY cmd/ ./cmd/
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /sim-agent ./cmd/sim-agent
+
+FROM alpine:3.19
+RUN apk add --no-cache wget
+COPY --from=builder /sim-agent /usr/local/bin/sim-agent
+EXPOSE 9200
+ENTRYPOINT ["/usr/local/bin/sim-agent"]
