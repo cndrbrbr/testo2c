@@ -2,6 +2,8 @@
 
 Simulation and integration-test harness for [OrbitalC2Core](https://github.com/cndrbrbr/orbitalc2core).
 
+![testo2c running — NATO tactical symbols on the Hesse/Rhön map](screenshot.png)
+
 Spins up a 3-node OrbitalC2Core cluster and attaches one simulation agent per node. Each cycle, each agent moves one of its 3 units and posts the updated position to the **other two** nodes via the Feature REST API — creating a "drop-in" effect where one new tactical symbol appears every `SIM_INTERVAL` seconds. In parallel, each agent generates a burst of randomised NATO ADATP-3 messages and injects them into the other two nodes' ADATP-3 adapters.
 
 ---

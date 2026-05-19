@@ -460,6 +460,7 @@ func (a *agent) postFeature(ctx context.Context, nodeURL string, unitIdx int) er
 		"id":      featureID(a.cfg.agentID, unitIdx),
 		"layerId": lID,
 		"kind":    5,
+		"version": time.Now().UnixMilli(),
 		"geoJson": json.RawMessage(gjRaw),
 	}
 	if _, err := a.httpPost(ctx, nodeURL+"/v1/features", feat); err != nil {
