@@ -1,0 +1,10 @@
+basemaps:
+  - id: osm
+    label: OpenStreetMap
+    type: osm
+
+  - id: esri-sat
+    label: ESRI Satellit
+    type: xyz
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+    attribution: "© Esri"
