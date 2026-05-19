@@ -215,12 +215,12 @@ Change the base maps:
 
 ```bash
 # Edit basemaps.yaml — all three nodes share the same file via volume mount.
-# The included basemaps.yaml ships with OpenStreetMap + ESRI Satellite.
+# The included basemaps.yaml ships with 8 tile sources (see below).
 # Supported types: osm, xyz, wms, pmtiles, blank
 docker compose up --build
 ```
 
-Example `basemaps.yaml`:
+The included `basemaps.yaml`:
 
 ```yaml
 basemaps:
@@ -234,11 +234,35 @@ basemaps:
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
     attribution: "© Esri"
 
+  - id: esri-topo
+    label: ESRI Topo
+    type: xyz
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"
+    attribution: "© Esri"
+
+  - id: esri-relief
+    label: ESRI Geländerelief
+    type: xyz
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}"
+    attribution: "© Esri"
+
   - id: topo
     label: OpenTopoMap
     type: xyz
     url: "https://tile.opentopomap.org/{z}/{x}/{y}.png"
     attribution: "© OpenTopoMap-Mitwirkende"
+
+  - id: carto-light
+    label: Carto Hell
+    type: xyz
+    url: "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
+    attribution: "© OpenStreetMap-Mitwirkende, © CartoDB"
+
+  - id: carto-dark
+    label: Carto Dunkel
+    type: xyz
+    url: "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
+    attribution: "© OpenStreetMap-Mitwirkende, © CartoDB"
 
   - id: blank
     label: Kein Hintergrund
