@@ -211,29 +211,57 @@ Change the scenario:
 docker compose up --build
 ```
 
+Change the base maps:
+
+```bash
+# Edit basemaps.yaml — all three nodes share the same file via volume mount.
+# The included basemaps.yaml ships with OpenStreetMap + ESRI Satellite.
+# Supported types: osm, xyz, wms, pmtiles, blank
+docker compose up --build
+```
+
+Example `basemaps.yaml`:
+
+```yaml
+basemaps:
+  - id: osm
+    label: OpenStreetMap
+    type: osm
+
+  - id: esri-sat
+    label: ESRI Satellit
+    type: xyz
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+    attribution: "© Esri"
+
+  - id: topo
+    label: OpenTopoMap
+    type: xyz
+    url: "https://tile.opentopomap.org/{z}/{x}/{y}.png"
+    attribution: "© OpenTopoMap-Mitwirkende"
+
+  - id: blank
+    label: Kein Hintergrund
+    type: blank
+```
+
 ---
 
-## Project Structure (planned)
+## Project Structure
 
 ```
 testo2c/
 ├── cmd/
 │   └── sim-agent/          # Simulation agent binary entry point
 │       └── main.go
-├── internal/
-│   ├── agent/              # Core simulation loop, state, and control API
-│   │   └── agent.go
-│   ├── generator/          # ADATP-3 message generator
-│   │   └── generator.go
-│   └── scenario/           # Scenario profile definitions
-│       └── scenario.go
 ├── deploy/
 │   └── Dockerfile.sim-agent
+├── basemaps.yaml           # Selectable base map tile sources (mounted into all nodes)
 ├── docker-compose.yml
 └── README.md
 ```
 
-The simulation agent imports `orbitalc2core/remotecontrol/client` and `orbitalc2core/messages/adatp3` as Go module dependencies; the `go.mod` references the sibling directory via a `replace` directive for local development and the GitHub URL for production builds.
+The simulation agent is a self-contained Go binary. It imports `orbitalc2core/remotecontrol/client` and `orbitalc2core/messages/adatp3` as Go module dependencies; the `go.mod` references the sibling directory via a `replace` directive for local development and the GitHub URL for production builds.
 
 ---
 
