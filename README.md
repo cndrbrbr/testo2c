@@ -188,13 +188,13 @@ This ensures the cluster is fully ready before the first message is injected.
 ## Quick Start
 
 ```bash
-# Clone both repos side-by-side (orbitalc2core must be a sibling directory
-# because testo2c builds the OrbitalC2Core images from source)
-git clone git@github.com:cndrbrbr/orbitalc2core.git
+# All images are available pre-built on Docker Hub (linux/amd64 + linux/arm64).
+# docker compose up --build pulls them automatically — no local orbitalc2core
+# checkout required unless you want to build from source.
 git clone git@github.com:cndrbrbr/testo2c.git
 
 cd testo2c
-docker compose up --build
+docker compose up
 
 # Node UIs
 open http://localhost:8081   # node 1
@@ -300,6 +300,7 @@ The simulation agent is a self-contained Go binary. It imports `orbitalc2core/re
 | OrbitalC2Core node image | Built from `../orbitalc2core` (local); pre-built at [`cndrbrbr/orbital2core`](https://hub.docker.com/r/cndrbrbr/orbital2core) |
 | ADATP-3 adapter image | Built from `../orbitalc2core/deploy/Dockerfile.adatp3`; pre-built at [`cndrbrbr/orbital2core-adatp3`](https://hub.docker.com/r/cndrbrbr/orbital2core-adatp3) |
 | Link-16 adapter image | Built from `../orbitalc2core/deploy/Dockerfile.link16`; pre-built at [`cndrbrbr/orbital2core-link16`](https://hub.docker.com/r/cndrbrbr/orbital2core-link16) |
+| Simulation agent image | Built from `deploy/Dockerfile.sim-agent`; pre-built at [`cndrbrbr/testo2c-sim-agent`](https://hub.docker.com/r/cndrbrbr/testo2c-sim-agent) |
 | NATS | `nats:2-alpine` (Docker Hub) |
 | Go | 1.22+ (agent only, `CGO_ENABLED=0`) |
 
