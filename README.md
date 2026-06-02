@@ -4,7 +4,7 @@ Simulation and integration-test harness for [OrbitalC2Core](https://github.com/c
 
 ![testo2c running — NATO tactical symbols on the Hesse/Rhön map](screenshot.png)
 
-Spins up a 3-node OrbitalC2Core cluster and attaches one simulation agent per node. Each cycle, each agent moves one of its 3 units and posts the updated position to the **other two** nodes via the Feature REST API — creating a "drop-in" effect where one new tactical symbol appears every `SIM_INTERVAL` seconds. In parallel, each agent generates a burst of randomised NATO ADATP-3 messages and injects them into the other two nodes' ADATP-3 adapters.
+Spins up a 3-node OrbitalC2Core cluster and attaches one simulation agent per node. Each cycle, each agent moves one of its 3 units and posts the updated position to the **other two** nodes via the Feature REST API — creating a "drop-in" effect where one new tactical symbol appears every `SIM_INTERVAL` seconds. In parallel, each agent generates a burst of randomised NATO ADATP-3 messages and injects them into the other two nodes' ADATP-3 adapters. Every injected message appears in the **Meldungseingang** (incoming message log) panel of the target node's UI; OWNSITREP and SPOTREP messages that carry coordinates are additionally shown as orange circle markers on the tactical map.
 
 ---
 
@@ -60,18 +60,20 @@ Configuration via environment variables:
 
 Each cycle generates `SIM_BURST` (default 10) ADATP-3 text messages, distributed as:
 
-| Count | Type | Effect on map |
-|-------|------|---------------|
-| 3 | `OWNSITREP` | Moving friendly force elements |
-| 2 | `SITREP` | Situation narrative reports |
-| 2 | `SPOTREP` (enemy) | Red contacts at random positions |
-| 1 | `SPOTREP` (unknown) | Unknown contact symbol |
-| 1 | `LOGREP` | Logistics state update on a friendly unit |
-| 1 | `ORBAT` | Unit hierarchy (emitted every 5th cycle, otherwise replaced by extra SITREP) |
+| Count | Type | Effect on map | Meldungseingang entries |
+|-------|------|---------------|------------------------|
+| 3 | `OWNSITREP` | Moving friendly force elements | Location (with coords ●) + ForceElement |
+| 2 | `SITREP` | Situation narrative reports | Report |
+| 2 | `SPOTREP` (enemy) | Red contacts at random positions | Location (with coords ●) + ForceElement + Report |
+| 1 | `SPOTREP` (unknown) | Unknown contact symbol | Location (with coords ●) + Report |
+| 1 | `LOGREP` | Logistics state update on a friendly unit | Report |
+| 1 | `ORBAT` | Unit hierarchy (emitted every 5th cycle, otherwise replaced by extra SITREP) | ForceElements |
 
 All generated messages are valid ADATP-3 text in the format accepted by `POST /adatp3/message`. Positions are expressed as WGS84 coordinates. DTGs are set to the current UTC time.
 
 Generated ADATP-3 output is also written to the agent's structured log so messages can be replayed independently.
+
+Each cycle therefore produces up to **~20 Meldungseingang entries** per target node (across all message types), with **~8 entries carrying coordinates** that appear as orange markers on the map.
 
 ---
 
@@ -80,17 +82,19 @@ Generated ADATP-3 output is also written to the agent's structured log so messag
 Each agent sends its generated messages to **both peer nodes' ADATP-3 adapters**, not to its own node:
 
 ```
-sim-agent-1  →  adatp3-adapter-2  →  orbital-node2
-             →  adatp3-adapter-3  →  orbital-node3
+sim-agent-1  →  adatp3-adapter-2  →  orbital-node2  →  Meldungseingang (node 2)
+             →  adatp3-adapter-3  →  orbital-node3  →  Meldungseingang (node 3)
 
-sim-agent-2  →  adatp3-adapter-1  →  orbital-node1
-             →  adatp3-adapter-3  →  orbital-node3
+sim-agent-2  →  adatp3-adapter-1  →  orbital-node1  →  Meldungseingang (node 1)
+             →  adatp3-adapter-3  →  orbital-node3  →  Meldungseingang (node 3)
 
-sim-agent-3  →  adatp3-adapter-1  →  orbital-node1
-             →  adatp3-adapter-2  →  orbital-node2
+sim-agent-3  →  adatp3-adapter-1  →  orbital-node1  →  Meldungseingang (node 1)
+             →  adatp3-adapter-2  →  orbital-node2  →  Meldungseingang (node 2)
 ```
 
 Delivery uses `POST /adatp3/message` with a JSON envelope (`{"messages": [...]}`), sending all cycle messages in one request per peer. On failure, the agent retries 3 times with exponential backoff (1 s, 2 s, 4 s). Delivery results are logged per peer per cycle.
+
+Each transformed MIP object (ForceElement, Report, Location) is automatically appended to the target node's **Meldungseingang** panel. Location objects with WGS84 coordinates additionally appear as orange markers on that node's tactical map. The markers and log entries are independent of the Yjs-synchronised tactical feature layers — they are not replicated to other nodes.
 
 ---
 
