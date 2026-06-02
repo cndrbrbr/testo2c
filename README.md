@@ -4,7 +4,7 @@ Simulation and integration-test harness for [OrbitalC2Core](https://github.com/c
 
 ![testo2c running — NATO tactical symbols on the Hesse/Rhön map](screenshot.png)
 
-Spins up a 3-node OrbitalC2Core cluster and attaches one simulation agent per node. Each cycle, each agent moves one of its 3 units and posts the updated position to the **other two** nodes via the Feature REST API — creating a "drop-in" effect where one new tactical symbol appears every `SIM_INTERVAL` seconds. In parallel, each agent generates a burst of randomised NATO ADATP-3 messages and injects them into the other two nodes' ADATP-3 adapters. Every injected message appears in the **Meldungseingang** (incoming message log) panel of the target node's UI; OWNSITREP and SPOTREP messages that carry coordinates are additionally shown as orange circle markers on the tactical map.
+Spins up a 3-node OrbitalC2Core cluster and attaches one simulation agent per node. Each cycle, each agent moves one of its 3 units and posts the updated position to the **other two** nodes via the Feature REST API — creating a "drop-in" effect where one new tactical symbol appears every `SIM_INTERVAL` seconds. In parallel, each agent generates a burst of randomised NATO ADP messages and injects them into the other two nodes' ADP adapters. Every injected message appears in the **Meldungseingang** (incoming message log) panel of the target node's UI; OWNSITREP and SPOTREP messages that carry coordinates are additionally shown as orange circle markers on the tactical map.
 
 ---
 
@@ -19,9 +19,9 @@ Spins up a 3-node OrbitalC2Core cluster and attaches one simulation agent per no
 | `orbital-node1` | `:8081` | OrbitalC2Core node 1 (UI + REST API) |
 | `orbital-node2` | `:8082` | OrbitalC2Core node 2 |
 | `orbital-node3` | `:8083` | OrbitalC2Core node 3 |
-| `adatp3-adapter-1` | `:9181` | ADATP-3 adapter → node 1 |
-| `adatp3-adapter-2` | `:9182` | ADATP-3 adapter → node 2 |
-| `adatp3-adapter-3` | `:9183` | ADATP-3 adapter → node 3 |
+| `adp-adapter-1` | `:9181` | ADP adapter → node 1 |
+| `adp-adapter-2` | `:9182` | ADP adapter → node 2 |
+| `adp-adapter-3` | `:9183` | ADP adapter → node 3 |
 | `sim-agent-1` | `:9201` | Simulation agent 1 (control API) |
 | `sim-agent-2` | `:9202` | Simulation agent 2 |
 | `sim-agent-3` | `:9203` | Simulation agent 3 |
@@ -44,21 +44,21 @@ Configuration via environment variables:
 |----------|---------|-------------|
 | `AGENT_ID` | — | Agent identity: `1`, `2`, or `3` |
 | `OWN_ORBITAL_URL` | — | Base URL of this agent's own orbital-node |
-| `PEER_ADATP3_URLS` | — | Comma-separated ADATP-3 adapter URLs of the other two nodes |
+| `PEER_ADP_URLS` | — | Comma-separated ADP adapter URLs of the other two nodes |
 | `SCENARIO` | `central-europe` | Scenario profile (see F-07) |
 | `ALL_ORBITAL_URLS` | — | Comma-separated URLs of all 3 nodes (layer setup at startup) |
 | `PEER_ORBITAL_URLS` | — | Comma-separated URLs of the 2 peer nodes (feature posting) |
 | `SIM_INTERVAL` | `3` | Seconds between simulation cycles |
-| `SIM_BURST` | `10` | Number of ADATP-3 messages generated per cycle |
+| `SIM_BURST` | `10` | Number of ADP messages generated per cycle |
 | `SIM_AUTOSTART` | `true` | Start the loop automatically on container start |
 | `SIM_LISTEN` | `:9200` | Control API listen address |
 | `STARTUP_TIMEOUT` | `60` | Seconds to wait for dependencies before aborting |
 
 ---
 
-### F-03 — ADATP-3 Message Generator
+### F-03 — ADP Message Generator
 
-Each cycle generates `SIM_BURST` (default 10) ADATP-3 text messages, distributed as:
+Each cycle generates `SIM_BURST` (default 10) ADP text messages, distributed as:
 
 | Count | Type | Effect on map | Meldungseingang entries |
 |-------|------|---------------|------------------------|
@@ -69,9 +69,9 @@ Each cycle generates `SIM_BURST` (default 10) ADATP-3 text messages, distributed
 | 1 | `LOGREP` | Logistics state update on a friendly unit | Report |
 | 1 | `ORBAT` | Unit hierarchy (emitted every 5th cycle, otherwise replaced by extra SITREP) | ForceElements |
 
-All generated messages are valid ADATP-3 text in the format accepted by `POST /adatp3/message`. Positions are expressed as WGS84 coordinates. DTGs are set to the current UTC time.
+All generated messages are valid ADP text in the format accepted by `POST /adp/message`. Positions are expressed as WGS84 coordinates. DTGs are set to the current UTC time.
 
-Generated ADATP-3 output is also written to the agent's structured log so messages can be replayed independently.
+Generated ADP output is also written to the agent's structured log so messages can be replayed independently.
 
 Each cycle therefore produces up to **~20 Meldungseingang entries** per target node (across all message types), with **~8 entries carrying coordinates** that appear as orange markers on the map.
 
@@ -79,20 +79,20 @@ Each cycle therefore produces up to **~20 Meldungseingang entries** per target n
 
 ### F-04 — Cross-Node Message Delivery
 
-Each agent sends its generated messages to **both peer nodes' ADATP-3 adapters**, not to its own node:
+Each agent sends its generated messages to **both peer nodes' ADP adapters**, not to its own node:
 
 ```
-sim-agent-1  →  adatp3-adapter-2  →  orbital-node2  →  Meldungseingang (node 2)
-             →  adatp3-adapter-3  →  orbital-node3  →  Meldungseingang (node 3)
+sim-agent-1  →  adp-adapter-2  →  orbital-node2  →  Meldungseingang (node 2)
+             →  adp-adapter-3  →  orbital-node3  →  Meldungseingang (node 3)
 
-sim-agent-2  →  adatp3-adapter-1  →  orbital-node1  →  Meldungseingang (node 1)
-             →  adatp3-adapter-3  →  orbital-node3  →  Meldungseingang (node 3)
+sim-agent-2  →  adp-adapter-1  →  orbital-node1  →  Meldungseingang (node 1)
+             →  adp-adapter-3  →  orbital-node3  →  Meldungseingang (node 3)
 
-sim-agent-3  →  adatp3-adapter-1  →  orbital-node1  →  Meldungseingang (node 1)
-             →  adatp3-adapter-2  →  orbital-node2  →  Meldungseingang (node 2)
+sim-agent-3  →  adp-adapter-1  →  orbital-node1  →  Meldungseingang (node 1)
+             →  adp-adapter-2  →  orbital-node2  →  Meldungseingang (node 2)
 ```
 
-Delivery uses `POST /adatp3/message` with a JSON envelope (`{"messages": [...]}`), sending all cycle messages in one request per peer. On failure, the agent retries 3 times with exponential backoff (1 s, 2 s, 4 s). Delivery results are logged per peer per cycle.
+Delivery uses `POST /adp/message` with a JSON envelope (`{"messages": [...]}`), sending all cycle messages in one request per peer. On failure, the agent retries 3 times with exponential backoff (1 s, 2 s, 4 s). Delivery results are logged per peer per cycle.
 
 Each transformed MIP object (ForceElement, Report, Location) is automatically appended to the target node's **Meldungseingang** panel. Location objects with WGS84 coordinates additionally appear as orange markers on that node's tactical map. The markers and log entries are independent of the Yjs-synchronised tactical feature layers — they are not replicated to other nodes.
 
@@ -112,7 +112,7 @@ Each agent owns 3 units (9 units total across the cluster). Each cycle, one unit
 
 ### F-06 — Direct Orbital Feature API
 
-Agents post tactical symbols directly to the OrbitalC2Core Feature REST API (not via ADATP-3):
+Agents post tactical symbols directly to the OrbitalC2Core Feature REST API (not via ADP):
 
 | Action | When | API call |
 |--------|------|----------|
@@ -163,9 +163,9 @@ Every significant event is emitted as a JSON log line to stdout:
 ```json
 {"time":"2026-04-26T10:00:05Z","agent":1,"event":"cycle_start","cycle":7,"scenario":"central-europe"}
 {"time":"2026-04-26T10:00:05Z","agent":1,"event":"message_generated","type":"OWNSITREP","serial":"007-1","unit":"1PzGrenBtl212","lat":51.234,"lon":9.876}
-{"time":"2026-04-26T10:00:06Z","agent":1,"event":"delivery","peer":"adatp3-adapter-2","messages":10,"ok":true,"elapsed_ms":87}
-{"time":"2026-04-26T10:00:06Z","agent":1,"event":"delivery","peer":"adatp3-adapter-3","messages":10,"ok":false,"attempt":1,"error":"connection refused"}
-{"time":"2026-04-26T10:00:08Z","agent":1,"event":"delivery","peer":"adatp3-adapter-3","messages":10,"ok":true,"attempt":2,"elapsed_ms":134}
+{"time":"2026-04-26T10:00:06Z","agent":1,"event":"delivery","peer":"adp-adapter-2","messages":10,"ok":true,"elapsed_ms":87}
+{"time":"2026-04-26T10:00:06Z","agent":1,"event":"delivery","peer":"adp-adapter-3","messages":10,"ok":false,"attempt":1,"error":"connection refused"}
+{"time":"2026-04-26T10:00:08Z","agent":1,"event":"delivery","peer":"adp-adapter-3","messages":10,"ok":true,"attempt":2,"elapsed_ms":134}
 {"time":"2026-04-26T10:00:08Z","agent":1,"event":"cycle_done","cycle":7,"total_delivered":20,"elapsed_ms":3021}
 ```
 
@@ -178,7 +178,7 @@ All log entries are also held in a ring buffer (last 100) and served via `GET /s
 The agent does not start the simulation loop until all dependencies are healthy:
 
 1. Polls `GET /healthz` on its own orbital-node every 2 s until status is `ok`.
-2. Polls `GET /health` on each peer ADATP-3 adapter every 2 s until all respond `ok`.
+2. Polls `GET /health` on each peer ADP adapter every 2 s until all respond `ok`.
 3. If any dependency does not become healthy within `STARTUP_TIMEOUT` (default 60 s), the agent exits with code 1 and Docker Compose restarts it.
 
 This ensures the cluster is fully ready before the first message is injected.
@@ -289,7 +289,7 @@ testo2c/
 └── README.md
 ```
 
-The simulation agent is a self-contained Go binary. It imports `orbitalc2core/remotecontrol/client` and `orbitalc2core/messages/adatp3` as Go module dependencies; the `go.mod` references the sibling directory via a `replace` directive for local development and the GitHub URL for production builds.
+The simulation agent is a self-contained Go binary. It imports `orbitalc2core/remotecontrol/client` and `orbitalc2core/messages/adp` as Go module dependencies; the `go.mod` references the sibling directory via a `replace` directive for local development and the GitHub URL for production builds.
 
 ---
 
@@ -298,7 +298,7 @@ The simulation agent is a self-contained Go binary. It imports `orbitalc2core/re
 | Component | Source |
 |-----------|--------|
 | OrbitalC2Core node image | Built from `../orbitalc2core` (local); pre-built at [`cndrbrbr/orbital2core`](https://hub.docker.com/r/cndrbrbr/orbital2core) |
-| ADATP-3 adapter image | Built from `../orbitalc2core/deploy/Dockerfile.adatp3`; pre-built at [`cndrbrbr/orbital2core-adatp3`](https://hub.docker.com/r/cndrbrbr/orbital2core-adatp3) |
+| ADP adapter image | Built from `../orbitalc2core/deploy/Dockerfile.adp`; pre-built at [`cndrbrbr/orbital2core-adp`](https://hub.docker.com/r/cndrbrbr/orbital2core-adp) |
 | Simulation agent image | Built from `deploy/Dockerfile.sim-agent`; pre-built at [`cndrbrbr/testo2c-sim-agent`](https://hub.docker.com/r/cndrbrbr/testo2c-sim-agent) |
 | NATS | `nats:2-alpine` (Docker Hub) |
 | Go | 1.22+ (agent only, `CGO_ENABLED=0`) |

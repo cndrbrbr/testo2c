@@ -1,8 +1,8 @@
 // sim-agent — OrbitalC2Core simulation agent.
 //
 // Generates random unit movement, posts tactical symbols via the Feature API
-// to peer orbital-node instances, and injects ADATP-3 messages via the
-// ADATP-3 adapters.  Exposes a control REST API on SIM_LISTEN.
+// to peer orbital-node instances, and injects ADP messages via the
+// ADP adapters.  Exposes a control REST API on SIM_LISTEN.
 //
 // Environment variables:
 //
@@ -10,7 +10,7 @@
 //	OWN_ORBITAL_URL   Base URL of this agent's own orbital-node
 //	ALL_ORBITAL_URLS  Comma-sep URLs of all 3 nodes (for layer setup)
 //	PEER_ORBITAL_URLS Comma-sep URLs of the 2 peer nodes (for feature posting)
-//	PEER_ADATP3_URLS  Comma-sep ADATP-3 adapter URLs of the 2 peers
+//	PEER_ADP_URLS  Comma-sep ADP adapter URLs of the 2 peers
 //	SCENARIO          Scenario profile (default: central-europe)
 //	SIM_INTERVAL      Seconds between cycles (default: 10)
 //	SIM_BURST         Messages per cycle (default: 10)
@@ -144,7 +144,7 @@ type config struct {
 	ownOrbitalURL  string
 	allOrbitalURLs []string
 	peerOrbitalURLs []string
-	peerADATP3URLs  []string
+	peerADPURLs  []string
 	scenario       string
 	interval       time.Duration
 	burst          int
@@ -163,7 +163,7 @@ func parseConfig() config {
 		ownOrbitalURL:   envOr("OWN_ORBITAL_URL", "http://localhost:8080"),
 		allOrbitalURLs:  splitURLs(envOr("ALL_ORBITAL_URLS", "")),
 		peerOrbitalURLs: splitURLs(envOr("PEER_ORBITAL_URLS", "")),
-		peerADATP3URLs:  splitURLs(envOr("PEER_ADATP3_URLS", "")),
+		peerADPURLs:  splitURLs(envOr("PEER_ADP_URLS", "")),
 		scenario:        envOr("SCENARIO", "central-europe"),
 		interval:        time.Duration(interval) * time.Second,
 		burst:           burst,
@@ -243,7 +243,7 @@ type agent struct {
 	mu      sync.Mutex
 	running bool
 	cycle   int
-	stats   [4]deliveryStat // index 0=peer0 orbital, 1=peer1 orbital, 2=peer0 adatp3, 3=peer1 adatp3
+	stats   [4]deliveryStat // index 0=peer0 orbital, 1=peer1 orbital, 2=peer0 adp, 3=peer1 adp
 	lastErr string
 }
 
@@ -376,22 +376,22 @@ func (a *agent) step() {
 		}
 	}
 
-	// Generate and post ADATP-3 messages to peer adapters
-	msgs := a.generateADATP3(cycle)
-	for i, adatp3URL := range a.cfg.peerADATP3URLs {
-		err := a.postADATP3(ctx, adatp3URL, msgs)
+	// Generate and post ADP messages to peer adapters
+	msgs := a.generateADP(cycle)
+	for i, adpURL := range a.cfg.peerADPURLs {
+		err := a.postADP(ctx, adpURL, msgs)
 		a.mu.Lock()
 		if err != nil {
 			a.stats[i+2].errors++
 			a.lastErr = err.Error()
 			a.mu.Unlock()
 			ok := false
-			a.log.add(logEntry{Time: now(), Agent: a.cfg.agentID, Event: "adatp3", Detail: adatp3URL, OK: &ok})
+			a.log.add(logEntry{Time: now(), Agent: a.cfg.agentID, Event: "adp", Detail: adpURL, OK: &ok})
 		} else {
 			a.stats[i+2].sent += len(msgs)
 			a.mu.Unlock()
 			ok := true
-			a.log.add(logEntry{Time: now(), Agent: a.cfg.agentID, Event: "adatp3", Detail: fmt.Sprintf("%s msgs=%d", adatp3URL, len(msgs)), OK: &ok})
+			a.log.add(logEntry{Time: now(), Agent: a.cfg.agentID, Event: "adp", Detail: fmt.Sprintf("%s msgs=%d", adpURL, len(msgs)), OK: &ok})
 		}
 	}
 
@@ -469,7 +469,7 @@ func (a *agent) postFeature(ctx context.Context, nodeURL string, unitIdx int) er
 	return nil
 }
 
-// ── ADATP-3 generation and posting ───────────────────────────────────────────
+// ── ADP generation and posting ───────────────────────────────────────────
 
 var monthAbbr = [13]string{"", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"}
 
@@ -477,7 +477,7 @@ func formatDTG(t time.Time) string {
 	return fmt.Sprintf("%02d%02d%02dZ%s%02d", t.Day(), t.Hour(), t.Minute(), monthAbbr[t.Month()], t.Year()%100)
 }
 
-func (a *agent) generateADATP3(cycle int) []string {
+func (a *agent) generateADP(cycle int) []string {
 	t := time.Now().UTC()
 	dtg := formatDTG(t)
 	var msgs []string
@@ -551,9 +551,9 @@ func (a *agent) generateADATP3(cycle int) []string {
 	return msgs
 }
 
-func (a *agent) postADATP3(ctx context.Context, adatp3URL string, msgs []string) error {
+func (a *agent) postADP(ctx context.Context, adpURL string, msgs []string) error {
 	envelope := map[string]any{"messages": msgs}
-	_, err := a.httpPost(ctx, adatp3URL+"/adatp3/message", envelope)
+	_, err := a.httpPost(ctx, adpURL+"/adp/message", envelope)
 	return err
 }
 
@@ -656,10 +656,10 @@ func (a *agent) serveControl(addr string) {
 				"peer0_orbital_errors": a.stats[0].errors,
 				"peer1_orbital_sent":   a.stats[1].sent,
 				"peer1_orbital_errors": a.stats[1].errors,
-				"peer0_adatp3_sent":    a.stats[2].sent,
-				"peer0_adatp3_errors":  a.stats[2].errors,
-				"peer1_adatp3_sent":    a.stats[3].sent,
-				"peer1_adatp3_errors":  a.stats[3].errors,
+				"peer0_adp_sent":    a.stats[2].sent,
+				"peer0_adp_errors":  a.stats[2].errors,
+				"peer1_adp_sent":    a.stats[3].sent,
+				"peer1_adp_errors":  a.stats[3].errors,
 			},
 			"units": func() []map[string]any {
 				var out []map[string]any
@@ -751,7 +751,7 @@ func main() {
 		"scenario", cfg.scenario,
 		"own", cfg.ownOrbitalURL,
 		"peers_orbital", cfg.peerOrbitalURLs,
-		"peers_adatp3", cfg.peerADATP3URLs,
+		"peers_adp", cfg.peerADPURLs,
 	)
 
 	ctx := context.Background()
@@ -763,11 +763,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Wait for peer ADATP-3 adapters
-	for _, u := range cfg.peerADATP3URLs {
-		slog.Info("waiting for ADATP-3 adapter", "url", u)
+	// Wait for peer ADP adapters
+	for _, u := range cfg.peerADPURLs {
+		slog.Info("waiting for ADP adapter", "url", u)
 		if err := waitHealthy(ctx, u, "/health", cfg.startupTimeout); err != nil {
-			slog.Error("ADATP-3 adapter not healthy", "url", u, "err", err)
+			slog.Error("ADP adapter not healthy", "url", u, "err", err)
 			os.Exit(1)
 		}
 	}
