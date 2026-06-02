@@ -94,7 +94,7 @@ sim-agent-3  →  adp-adapter-1  →  orbital-node1  →  Meldungseingang (node 
 
 Delivery uses `POST /adp/message` with a JSON envelope (`{"messages": [...]}`), sending all cycle messages in one request per peer. On failure, the agent retries 3 times with exponential backoff (1 s, 2 s, 4 s). Delivery results are logged per peer per cycle.
 
-Each transformed MIP object (ForceElement, Report, Location) is automatically appended to the target node's **Meldungseingang** panel. Location objects with WGS84 coordinates additionally appear as orange markers on that node's tactical map. The markers and log entries are independent of the Yjs-synchronised tactical feature layers — they are not replicated to other nodes.
+Each transformed O2CID object (ForceElement, Report, Location) is automatically appended to the target node's **Meldungseingang** panel. Location objects with WGS84 coordinates additionally appear as orange markers on that node's tactical map. The markers and log entries are independent of the Yjs-synchronised tactical feature layers — they are not replicated to other nodes.
 
 ---
 
