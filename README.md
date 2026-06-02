@@ -299,7 +299,6 @@ The simulation agent is a self-contained Go binary. It imports `orbitalc2core/re
 |-----------|--------|
 | OrbitalC2Core node image | Built from `../orbitalc2core` (local); pre-built at [`cndrbrbr/orbital2core`](https://hub.docker.com/r/cndrbrbr/orbital2core) |
 | ADATP-3 adapter image | Built from `../orbitalc2core/deploy/Dockerfile.adatp3`; pre-built at [`cndrbrbr/orbital2core-adatp3`](https://hub.docker.com/r/cndrbrbr/orbital2core-adatp3) |
-| Link-16 adapter image | Built from `../orbitalc2core/deploy/Dockerfile.link16`; pre-built at [`cndrbrbr/orbital2core-link16`](https://hub.docker.com/r/cndrbrbr/orbital2core-link16) |
 | Simulation agent image | Built from `deploy/Dockerfile.sim-agent`; pre-built at [`cndrbrbr/testo2c-sim-agent`](https://hub.docker.com/r/cndrbrbr/testo2c-sim-agent) |
 | NATS | `nats:2-alpine` (Docker Hub) |
 | Go | 1.22+ (agent only, `CGO_ENABLED=0`) |
