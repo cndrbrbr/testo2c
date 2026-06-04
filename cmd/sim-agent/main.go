@@ -1,8 +1,9 @@
 // sim-agent — OrbitalC2Core simulation agent.
 //
 // Generates random unit movement, posts tactical symbols via the Feature API
-// to peer orbital-node instances, and injects ADP messages via the
-// ADP adapters.  Exposes a control REST API on SIM_LISTEN.
+// to peer orbital-node instances, injects ADP messages via the ADP adapters,
+// posts xaction entries to peer nodes, and dispatches xcommands on the own node.
+// Exposes a control REST API on SIM_LISTEN.
 //
 // Environment variables:
 //
@@ -92,6 +93,32 @@ var scenarioMap = map[string]*scenario{
 			{name: "OPFOR-Mtn-1", sidc: "SHGPUCI--------", side: "HOSTILE",  echelon: "COMPANY",   equip: "4XBMP"},
 		},
 	},
+}
+
+// ── XCommand / XAction data ───────────────────────────────────────────────────
+
+// xCommandDefs are registered on every orbital node at startup.
+var xCommandDefs = []map[string]any{
+	{"name": "fire_mission",  "avgDuration": 120},
+	{"name": "air_support",   "avgDuration": 180},
+	{"name": "arty_support",  "avgDuration": 90},
+	{"name": "medevac",       "avgDuration": 240},
+	{"name": "resupply",      "avgDuration": 300},
+	{"name": "intel_update",  "avgDuration": 60},
+}
+
+// xActionNames pools tactical action labels sent as xaction entries each cycle.
+var xActionNames = []string{
+	"MOVE_ORDER",
+	"SITREP",
+	"CONTACT_REPORT",
+	"FIRE_MISSION",
+	"LOGREP",
+	"RESUPPLY_REQUEST",
+	"MEDEVAC",
+	"ARTY_REQUEST",
+	"WITHDRAW",
+	"CONSOLIDATE",
 }
 
 // ── Unit state ────────────────────────────────────────────────────────────────
@@ -240,11 +267,14 @@ type agent struct {
 	log   *logRing
 	http  *http.Client
 
-	mu      sync.Mutex
-	running bool
-	cycle   int
-	stats   [4]deliveryStat // index 0=peer0 orbital, 1=peer1 orbital, 2=peer0 adp, 3=peer1 adp
-	lastErr string
+	mu             sync.Mutex
+	running        bool
+	cycle          int
+	stats          [4]deliveryStat // [0,1]=peer orbital features, [2,3]=peer ADP
+	xActionStats   [2]deliveryStat // [0,1]=peer orbital xaction
+	xCmdDispatched int
+	xCmdErrors     int
+	lastErr        string
 }
 
 func newAgent(cfg config) *agent {
@@ -295,18 +325,29 @@ func (a *agent) ensureLayer(ctx context.Context, nodeURL string) error {
 	return err
 }
 
-// setupLayers creates the agent's layer on ALL orbital nodes.
+// setupLayers creates the agent's layer on ALL orbital nodes and registers
+// xcommands on every node so the command panel is populated from the start.
 func (a *agent) setupLayers(ctx context.Context) {
 	for _, u := range a.cfg.allOrbitalURLs {
 		if err := a.ensureLayer(ctx, u); err != nil {
 			slog.Warn("layer setup failed", "url", u, "err", err)
 		}
+		a.setupXCommands(ctx, u)
 	}
 	// Also push map center to own node
 	center := a.scen.center
 	body := map[string]float64{"latDeg": center[0], "lonDeg": center[1]}
 	if _, err := a.httpPost(ctx, a.cfg.ownOrbitalURL+"/v1/map/center", body); err != nil {
 		slog.Warn("map center push failed", "err", err)
+	}
+}
+
+// setupXCommands registers all xCommandDefs on the given orbital node.
+func (a *agent) setupXCommands(ctx context.Context, nodeURL string) {
+	for _, cmd := range xCommandDefs {
+		if _, err := a.httpPost(ctx, nodeURL+"/v1/commands", cmd); err != nil {
+			slog.Warn("xcommand register failed", "url", nodeURL, "cmd", cmd["name"], "err", err)
+		}
 	}
 }
 
@@ -393,6 +434,42 @@ func (a *agent) step() {
 			ok := true
 			a.log.add(logEntry{Time: now(), Agent: a.cfg.agentID, Event: "adp", Detail: fmt.Sprintf("%s msgs=%d", adpURL, len(msgs)), OK: &ok})
 		}
+	}
+
+	// Post one xaction per peer orbital node reflecting this cycle's activity.
+	timeSent := now()
+	actionName := xActionNames[a.rng.Intn(len(xActionNames))]
+	for i, peerURL := range a.cfg.peerOrbitalURLs {
+		err := a.postXAction(ctx, peerURL, actionName, a.units[unitIdx].name, timeSent)
+		a.mu.Lock()
+		if err != nil {
+			a.xActionStats[i].errors++
+			a.lastErr = err.Error()
+			a.mu.Unlock()
+			ok := false
+			a.log.add(logEntry{Time: now(), Agent: a.cfg.agentID, Event: "xaction", Detail: peerURL, OK: &ok})
+		} else {
+			a.xActionStats[i].sent++
+			a.mu.Unlock()
+			ok := true
+			a.log.add(logEntry{Time: now(), Agent: a.cfg.agentID, Event: "xaction", Detail: fmt.Sprintf("%s action=%s", peerURL, actionName), OK: &ok})
+		}
+	}
+
+	// Every 4th cycle dispatch a random xcommand on the own node.
+	if cycle%4 == 0 {
+		cmdName := xCommandDefs[a.rng.Intn(len(xCommandDefs))]["name"].(string)
+		err := a.dispatchXCommand(ctx, a.cfg.ownOrbitalURL, cmdName)
+		a.mu.Lock()
+		if err != nil {
+			a.xCmdErrors++
+			a.lastErr = err.Error()
+		} else {
+			a.xCmdDispatched++
+		}
+		a.mu.Unlock()
+		ok := err == nil
+		a.log.add(logEntry{Time: now(), Agent: a.cfg.agentID, Event: "xcommand", Detail: cmdName, OK: &ok})
 	}
 
 	a.log.add(logEntry{Time: now(), Agent: a.cfg.agentID, Event: "cycle_done", Detail: fmt.Sprintf("cycle=%d", cycle)})
@@ -557,6 +634,23 @@ func (a *agent) postADP(ctx context.Context, adpURL string, msgs []string) error
 	return err
 }
 
+// postXAction sends a single xaction entry to the given orbital node.
+func (a *agent) postXAction(ctx context.Context, nodeURL, actionName, userName, timeSent string) error {
+	body := map[string]any{
+		"actionName": actionName,
+		"userName":   userName,
+		"timeSent":   timeSent,
+	}
+	_, err := a.httpPost(ctx, nodeURL+"/v1/xaction", body)
+	return err
+}
+
+// dispatchXCommand fires a registered xcommand on the given orbital node.
+func (a *agent) dispatchXCommand(ctx context.Context, nodeURL, name string) error {
+	_, err := a.httpPost(ctx, nodeURL+"/v1/xcommand", map[string]any{"name": name})
+	return err
+}
+
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 func (a *agent) httpPost(ctx context.Context, url string, body any) ([]byte, error) {
@@ -652,14 +746,20 @@ func (a *agent) serveControl(addr string) {
 			"cycle":    a.cycle,
 			"lastErr":  a.lastErr,
 			"stats": map[string]any{
-				"peer0_orbital_sent":   a.stats[0].sent,
-				"peer0_orbital_errors": a.stats[0].errors,
-				"peer1_orbital_sent":   a.stats[1].sent,
-				"peer1_orbital_errors": a.stats[1].errors,
-				"peer0_adp_sent":    a.stats[2].sent,
-				"peer0_adp_errors":  a.stats[2].errors,
-				"peer1_adp_sent":    a.stats[3].sent,
-				"peer1_adp_errors":  a.stats[3].errors,
+				"peer0_orbital_sent":    a.stats[0].sent,
+				"peer0_orbital_errors":  a.stats[0].errors,
+				"peer1_orbital_sent":    a.stats[1].sent,
+				"peer1_orbital_errors":  a.stats[1].errors,
+				"peer0_adp_sent":        a.stats[2].sent,
+				"peer0_adp_errors":      a.stats[2].errors,
+				"peer1_adp_sent":        a.stats[3].sent,
+				"peer1_adp_errors":      a.stats[3].errors,
+				"peer0_xaction_sent":    a.xActionStats[0].sent,
+				"peer0_xaction_errors":  a.xActionStats[0].errors,
+				"peer1_xaction_sent":    a.xActionStats[1].sent,
+				"peer1_xaction_errors":  a.xActionStats[1].errors,
+				"xcmd_dispatched":       a.xCmdDispatched,
+				"xcmd_errors":           a.xCmdErrors,
 			},
 			"units": func() []map[string]any {
 				var out []map[string]any
@@ -710,6 +810,9 @@ func (a *agent) serveControl(addr string) {
 		a.cycle = 0
 		a.lastErr = ""
 		a.stats = [4]deliveryStat{}
+		a.xActionStats = [2]deliveryStat{}
+		a.xCmdDispatched = 0
+		a.xCmdErrors = 0
 		// Reset positions
 		b := a.scen.bounds
 		for i, u := range a.units {

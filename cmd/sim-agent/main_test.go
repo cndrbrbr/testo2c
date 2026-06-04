@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"net/http"
@@ -328,6 +329,9 @@ func newTestMux() (*agent, *http.ServeMux) {
 		a.cycle = 0
 		a.lastErr = ""
 		a.stats = [4]deliveryStat{}
+		a.xActionStats = [2]deliveryStat{}
+		a.xCmdDispatched = 0
+		a.xCmdErrors = 0
 		a.mu.Unlock()
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -453,5 +457,209 @@ func TestMoveUnit_staysInBounds(t *testing.T) {
 				t.Fatalf("step %d unit %d lon %.4f escaped bounds [%.1f,%.1f]", i, j, u.lon, b.minLon, b.maxLon)
 			}
 		}
+	}
+}
+
+// ── postXAction ───────────────────────────────────────────────────────────────
+
+func TestPostXAction_sendsCorrectPayload(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/xaction" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"actionName": "MOVE_ORDER", "userName": "1PzGrenBtl212",
+			"timeSent": "2026-06-04T12:00:00Z", "timeReceived": "2026-06-04T12:00:01Z",
+		})
+	}))
+	defer srv.Close()
+
+	a := newAgent(config{agentID: 1, scenario: "central-europe"})
+	err := a.postXAction(context.Background(), srv.URL, "MOVE_ORDER", "1PzGrenBtl212", "2026-06-04T12:00:00Z")
+	if err != nil {
+		t.Fatalf("postXAction error: %v", err)
+	}
+	if gotBody["actionName"] != "MOVE_ORDER" {
+		t.Errorf("actionName: got %v want MOVE_ORDER", gotBody["actionName"])
+	}
+	if gotBody["userName"] != "1PzGrenBtl212" {
+		t.Errorf("userName: got %v want 1PzGrenBtl212", gotBody["userName"])
+	}
+	if gotBody["timeSent"] != "2026-06-04T12:00:00Z" {
+		t.Errorf("timeSent: got %v", gotBody["timeSent"])
+	}
+}
+
+func TestPostXAction_httpErrorReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	a := newAgent(config{agentID: 1, scenario: "central-europe"})
+	err := a.postXAction(context.Background(), srv.URL, "X", "U", "T")
+	if err == nil {
+		t.Error("expected error for 400 response")
+	}
+}
+
+// ── setupXCommands ────────────────────────────────────────────────────────────
+
+func TestSetupXCommands_registersAllDefs(t *testing.T) {
+	registered := make(map[string]float64)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/commands" {
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		name, _ := body["name"].(string)
+		dur, _ := body["avgDuration"].(float64)
+		registered[name] = dur
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(body)
+	}))
+	defer srv.Close()
+
+	a := newAgent(config{agentID: 1, scenario: "central-europe"})
+	a.setupXCommands(context.Background(), srv.URL)
+
+	if len(registered) != len(xCommandDefs) {
+		t.Errorf("expected %d commands registered, got %d", len(xCommandDefs), len(registered))
+	}
+	for _, def := range xCommandDefs {
+		name := def["name"].(string)
+		if _, ok := registered[name]; !ok {
+			t.Errorf("command %q not registered", name)
+		}
+	}
+}
+
+func TestSetupXCommands_toleratesErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	a := newAgent(config{agentID: 1, scenario: "central-europe"})
+	// Should not panic or return error — errors are logged and skipped.
+	a.setupXCommands(context.Background(), srv.URL)
+}
+
+// ── dispatchXCommand ──────────────────────────────────────────────────────────
+
+func TestDispatchXCommand_sendsCorrectPayload(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/xcommand" {
+			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+		}
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"id": "abc", "name": "fire_mission", "avgDuration": 120})
+	}))
+	defer srv.Close()
+
+	a := newAgent(config{agentID: 1, scenario: "central-europe"})
+	err := a.dispatchXCommand(context.Background(), srv.URL, "fire_mission")
+	if err != nil {
+		t.Fatalf("dispatchXCommand error: %v", err)
+	}
+	if gotBody["name"] != "fire_mission" {
+		t.Errorf("name: got %v want fire_mission", gotBody["name"])
+	}
+}
+
+func TestDispatchXCommand_httpErrorReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	a := newAgent(config{agentID: 1, scenario: "central-europe"})
+	if err := a.dispatchXCommand(context.Background(), srv.URL, "fire_mission"); err == nil {
+		t.Error("expected error for 404 response")
+	}
+}
+
+// ── xActionNames pool ─────────────────────────────────────────────────────────
+
+func TestXActionNames_nonEmpty(t *testing.T) {
+	if len(xActionNames) == 0 {
+		t.Error("xActionNames must not be empty")
+	}
+	seen := make(map[string]bool)
+	for _, n := range xActionNames {
+		if n == "" {
+			t.Error("xActionNames must not contain empty strings")
+		}
+		if seen[n] {
+			t.Errorf("duplicate xActionName: %q", n)
+		}
+		seen[n] = true
+	}
+}
+
+// ── xCommandDefs pool ─────────────────────────────────────────────────────────
+
+func TestXCommandDefs_nonEmptyWithRequiredFields(t *testing.T) {
+	if len(xCommandDefs) == 0 {
+		t.Error("xCommandDefs must not be empty")
+	}
+	seen := make(map[string]bool)
+	for _, def := range xCommandDefs {
+		name, ok := def["name"].(string)
+		if !ok || name == "" {
+			t.Errorf("xCommandDef missing name: %v", def)
+		}
+		if seen[name] {
+			t.Errorf("duplicate xCommandDef name: %q", name)
+		}
+		seen[name] = true
+		dur, ok := def["avgDuration"]
+		if !ok {
+			t.Errorf("xCommandDef %q missing avgDuration", name)
+		}
+		switch v := dur.(type) {
+		case int:
+			if v <= 0 {
+				t.Errorf("xCommandDef %q avgDuration must be positive, got %d", name, v)
+			}
+		case float64:
+			if v <= 0 {
+				t.Errorf("xCommandDef %q avgDuration must be positive, got %f", name, v)
+			}
+		default:
+			t.Errorf("xCommandDef %q avgDuration unexpected type %T", name, dur)
+		}
+	}
+}
+
+// ── xaction stats reset ───────────────────────────────────────────────────────
+
+func TestControlAPI_reset_clearsXActionStats(t *testing.T) {
+	a, mux := newTestMux()
+	a.mu.Lock()
+	a.xActionStats[0].sent = 5
+	a.xActionStats[1].errors = 3
+	a.xCmdDispatched = 7
+	a.xCmdErrors = 2
+	a.mu.Unlock()
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/sim/reset", nil))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("reset: got %d want 204", w.Code)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.xActionStats[0].sent != 0 || a.xActionStats[1].errors != 0 {
+		t.Error("xActionStats not cleared after reset")
+	}
+	if a.xCmdDispatched != 0 || a.xCmdErrors != 0 {
+		t.Error("xCmd counters not cleared after reset")
 	}
 }
