@@ -4,7 +4,7 @@ Simulation and integration-test harness for [OrbitalC2Core](https://github.com/c
 
 ![testo2c running — NATO tactical symbols on the Hesse/Rhön map](screenshot.png)
 
-Spins up a 3-node OrbitalC2Core cluster and attaches one simulation agent per node. Each cycle, each agent moves one of its 3 units and posts the updated position to the **other two** nodes via the Feature REST API — creating a "drop-in" effect where one new tactical symbol appears every `SIM_INTERVAL` seconds. In parallel, each agent generates a burst of randomised NATO ADP messages and injects them into the other two nodes' ADP adapters. Every injected message appears in the **Meldungseingang** (incoming message log) panel of the target node's UI; OWNSITREP and SPOTREP messages that carry coordinates are additionally shown as orange circle markers on the tactical map.
+Spins up a 3-node OrbitalC2Core cluster and attaches one simulation agent per node. Each cycle, each agent moves one of its 3 units and posts the updated position to the **other two** nodes via the Feature REST API — creating a "drop-in" effect where one new tactical symbol appears every `SIM_INTERVAL` seconds. In parallel, each agent generates a burst of randomised NATO ADP messages and injects them into the other two nodes' ADP adapters, posts an xaction entry to each peer node (populating the **Aktionsliste** panel), and every 4th cycle dispatches a random xcommand on its own node (populating the **Aktionen** queue). Every injected ADP message appears in the **Meldungseingang** panel of the target node's UI; OWNSITREP and SPOTREP messages that carry coordinates are additionally shown as orange circle markers on the tactical map.
 
 ---
 
@@ -147,12 +147,24 @@ Each agent exposes a lightweight HTTP API on `SIM_LISTEN` (default `:9200`):
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/sim/status` | JSON: running state, current cycle, entity counts via COP, last error, per-peer delivery stats |
+| `GET` | `/sim/status` | JSON: running state, current cycle, unit positions, last error, per-peer delivery stats (features, ADP, xaction, xcommand) |
 | `POST` | `/sim/start` | Start (or resume) the simulation loop |
 | `POST` | `/sim/stop` | Pause after the current cycle completes |
 | `POST` | `/sim/step` | Run exactly one cycle immediately (regardless of `SIM_AUTOSTART`) |
-| `POST` | `/sim/reset` | Stop loop, delete all agent-created features from own node, reset unit positions to scenario start |
+| `POST` | `/sim/reset` | Stop loop, delete all agent-created features from peer nodes, reset unit positions and all stats |
 | `GET` | `/sim/log` | Last 100 structured log entries as a JSON array |
+
+`GET /sim/status` stats object fields:
+
+| Field | Description |
+|-------|-------------|
+| `peer0_orbital_sent / errors` | Feature upserts to peer 0 |
+| `peer1_orbital_sent / errors` | Feature upserts to peer 1 |
+| `peer0_adp_sent / errors` | ADP messages to peer 0 adapter |
+| `peer1_adp_sent / errors` | ADP messages to peer 1 adapter |
+| `peer0_xaction_sent / errors` | XAction entries to peer 0 (F-12) |
+| `peer1_xaction_sent / errors` | XAction entries to peer 1 (F-12) |
+| `xcmd_dispatched / errors` | XCommand dispatches on own node (F-11) |
 
 ---
 
@@ -182,6 +194,53 @@ The agent does not start the simulation loop until all dependencies are healthy:
 3. If any dependency does not become healthy within `STARTUP_TIMEOUT` (default 60 s), the agent exits with code 1 and Docker Compose restarts it.
 
 This ensures the cluster is fully ready before the first message is injected.
+
+---
+
+### F-11 — XCommand Dispatch
+
+At startup `setupXCommands` registers six tactical commands on **every** orbital node so the **Aktionen** panel is populated from the first second:
+
+| Command | `avgDuration` |
+|---------|--------------|
+| `fire_mission` | 120 s |
+| `air_support` | 180 s |
+| `arty_support` | 90 s |
+| `medevac` | 240 s |
+| `resupply` | 300 s |
+| `intel_update` | 60 s |
+
+Every **4th cycle** each agent fires one randomly selected command on its **own** orbital node via `POST /v1/xcommand`. The dispatched event appears instantly in that node's **Aktionen** queue in the browser UI.
+
+Delivery results are tracked per-agent:
+
+| Status field | Description |
+|--------------|-------------|
+| `xcmd_dispatched` | Total commands successfully dispatched |
+| `xcmd_errors` | Total dispatch errors |
+
+`POST /sim/reset` clears these counters.
+
+---
+
+### F-12 — XAction Posting
+
+Each cycle every agent posts one xaction entry to each **peer** orbital node via `POST /v1/xaction`, reflecting the tactical activity of the current cycle. The action name is chosen randomly from a pool of 10 tactical labels:
+
+`MOVE_ORDER` · `SITREP` · `CONTACT_REPORT` · `FIRE_MISSION` · `LOGREP` · `RESUPPLY_REQUEST` · `MEDEVAC` · `ARTY_REQUEST` · `WITHDRAW` · `CONSOLIDATE`
+
+The `userName` field is set to the current unit's name. The `timeSent` field is the agent's local UTC time at the start of the cycle. The node stamps `timeReceived` on arrival. The entry appears at the **top** of the **Aktionsliste** panel in the receiving node's browser UI.
+
+Delivery results are tracked per-peer:
+
+| Status field | Description |
+|--------------|-------------|
+| `peer0_xaction_sent` | Entries successfully delivered to peer 0 |
+| `peer0_xaction_errors` | Errors for peer 0 |
+| `peer1_xaction_sent` | Entries successfully delivered to peer 1 |
+| `peer1_xaction_errors` | Errors for peer 1 |
+
+`POST /sim/reset` clears these counters alongside all other stats.
 
 ---
 
