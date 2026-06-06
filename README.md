@@ -2,6 +2,11 @@
 
 Simulation and integration-test harness for [OrbitalC2Core](https://github.com/cndrbrbr/orbitalc2core).
 
+> **Live demo** — the cluster is running at:
+> - Node 1: https://o2c.meckminecraft.de:35581/app/
+> - Node 2: https://o2c.meckminecraft.de:35582/app/
+> - Node 3: https://o2c.meckminecraft.de:35583/app/
+
 ![testo2c running — NATO tactical symbols on the Hesse/Rhön map](screenshot.png)
 
 Spins up a 3-node OrbitalC2Core cluster and attaches one simulation agent per node. Each cycle, each agent moves one of its 3 units and posts the updated position to the **other two** nodes via the Feature REST API — creating a "drop-in" effect where one new tactical symbol appears every `SIM_INTERVAL` seconds. In parallel, each agent generates a burst of randomised NATO ADP messages and injects them into the other two nodes' ADP adapters, posts an xaction entry to each peer node (populating the **Aktionsliste** panel), and every 4th cycle dispatches a random xcommand on its own node (populating the **Aktionen** queue). Every injected ADP message appears in the **Meldungseingang** panel of the target node's UI; OWNSITREP and SPOTREP messages that carry coordinates are additionally shown as orange circle markers on the tactical map.
