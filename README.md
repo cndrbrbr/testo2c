@@ -374,23 +374,26 @@ Tested against `cndrbrbr/orbital2core:07b6afc` (commit `07b6afc` — adds contac
 
 **Initial convergence** (measured ~15 s after startup):
 
-| Node | Layer 1 features | Layer 2 features | Layer 3 features |
-|------|-----------------|-----------------|-----------------|
-| node 1 `:8081` | 3 | 3 | 3 |
-| node 2 `:8082` | 3 | 3 | 3 |
-| node 3 `:8083` | 3 | 3 | 3 |
+| Node | Sim-Agent-1 features | Sim-Agent-2 features | Sim-Agent-3 features |
+|------|---------------------|---------------------|---------------------|
+| node 1 `:35581` | 3 | 3 | 3 |
+| node 2 `:35582` | 3 | 3 | 3 |
+| node 3 `:35583` | 3 | 3 | 3 |
 
 All three nodes reached identical state. Each node holds features owned by all three sim agents, including agents whose layers were created on other nodes.
 
-**Live update propagation** — feature `00000000-0002-0000-0000-000000000000` (owned by sim-agent-2, layer 2) observed on node 1 and node 3 over 15 s:
+**Live update propagation** — feature `00000000-0002-0000-0000-000000000000` (owned by sim-agent-2, layer Sim-Agent-2) observed on node 1 and node 3 over 15 s:
 
 | t | node 1 version | node 3 version |
 |---|---------------|---------------|
-| +5 s | 1780754091719 | 1780754091719 |
-| +10 s | 1780754101559 | 1780754101559 |
-| +15 s | 1780754111442 | 1780754111443 |
+| +0 s | 1780778366868 | 1780778366868 |
+| +5 s | 1780778366868 | 1780778366868 |
+| +10 s | 1780778377661 | 1780778377661 |
+| +15 s | 1780778377661 | 1780778377661 |
 
 Versions advance in lock-step across nodes that do not own the feature, confirming that NATS-delivered updates from sim-agent-2 are applied correctly on both peers within each 5 s polling window.
+
+**Simulation agent health** (measured at cycle 408): 3 663 ADP messages delivered per peer node, 2 transient delivery errors, 0 feature sync errors.
 
 ---
 
