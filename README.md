@@ -371,7 +371,7 @@ The simulation agent is a self-contained Go binary. It imports `orbitalc2core/re
 
 ## Sync Verification — 2026-06-06
 
-Tested against `cndrbrbr/orbital2core:6f48d4a` (commit `6f48d4a` — contact-age filter defaults to 1 minute on startup).
+Tested against `cndrbrbr/orbital2core:865204a` (commit `865204a` — rename basemap button label to 'Map').
 
 **Setup:** `docker compose up` on a single host; fresh volumes, all services started from scratch.
 
