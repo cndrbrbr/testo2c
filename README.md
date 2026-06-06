@@ -366,7 +366,7 @@ The simulation agent is a self-contained Go binary. It imports `orbitalc2core/re
 
 ## Sync Verification — 2026-06-06
 
-Tested against `cndrbrbr/orbital2core:0f1a0f3` (commit `0f1a0f3` — fixes inter-node NATS sync).
+Tested against `cndrbrbr/orbital2core:07b6afc` (commit `07b6afc` — adds contact-age filter toolbar control).
 
 **Setup:** `docker compose up` on a single host; fresh volumes, all services started from scratch.
 
