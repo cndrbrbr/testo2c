@@ -4,9 +4,12 @@
 #   cd ../caddy-proxy && docker compose up -d
 #
 # Usage:
-#   docker compose -f docker-compose.yml -f docker-compose.caddy-external.yml up
+#   docker compose -f docker-compose.yml -f docker-compose.caddy-external.yml up -d
 
 services:
+  caddy:
+    profiles: [disabled]
+
   orbital-node1:
     networks: [sim, proxy]
 
