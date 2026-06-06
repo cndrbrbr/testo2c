@@ -1,20 +1,29 @@
-# testo2c — 3-node OrbitalC2Core simulation cluster
+# testo2c — 3-node OrbitalC2Core simulation cluster with HTTPS
 #
-# Starts:  3 orbital-node instances  (ports 8081–8083)
-#          3 adp-adapters              (internal only)
-#          3 sim-agents               (control APIs 9201–9203)
-#          1 NATS JetStream           (inter-node sync)
+# Starts:  1 Caddy TLS proxy         (ports 35581–35583, 35591–35593)
+#          3 orbital-node instances  (internal only)
+#          3 adp-adapters            (internal only)
+#          3 sim-agents              (internal only)
+#          1 NATS JetStream          (internal only)
+#
+# All external ports are above 35500. Caddy terminates TLS using its
+# built-in local CA (self-signed). To suppress browser warnings once:
+#   docker compose exec caddy caddy trust
 #
 # Usage:
 #   docker compose up
 #
-# All images are pulled from Docker Hub — no local orbitalc2core checkout needed.
-# To build from source instead, replace `image:` with the corresponding `build:`
-# stanza (see git history for the build-from-source version).
+# Service URLs (HTTPS):
+#   https://localhost:35581/app/   OrbitalC2Core node 1
+#   https://localhost:35582/app/   OrbitalC2Core node 2
+#   https://localhost:35583/app/   OrbitalC2Core node 3
+#   https://localhost:35591/sim/status   sim-agent-1 control
+#   https://localhost:35592/sim/status   sim-agent-2 control
+#   https://localhost:35593/sim/status   sim-agent-3 control
 
 services:
 
-  # ── NATS JetStream ──────────────────────────────────────────────────────────
+  # ── NATS JetStream (inter-node sync, internal only) ─────────────────────────
   nats:
     image: nats:2-alpine
     restart: unless-stopped
@@ -27,12 +36,10 @@ services:
       retries: 5
       start_period: 5s
 
-  # ── OrbitalC2Core nodes ─────────────────────────────────────────────────────
+  # ── OrbitalC2Core nodes (no direct host ports — served via Caddy) ────────────
   orbital-node1:
     image: cndrbrbr/orbital2core:latest
     restart: unless-stopped
-    ports:
-      - "8081:8080"
     environment:
       NODE_ID:       "00000000-0000-0000-0000-000000000001"
       NATS_URL:      "nats://nats:4222"
@@ -56,8 +63,6 @@ services:
   orbital-node2:
     image: cndrbrbr/orbital2core:latest
     restart: unless-stopped
-    ports:
-      - "8082:8080"
     environment:
       NODE_ID:       "00000000-0000-0000-0000-000000000002"
       NATS_URL:      "nats://nats:4222"
@@ -81,8 +86,6 @@ services:
   orbital-node3:
     image: cndrbrbr/orbital2core:latest
     restart: unless-stopped
-    ports:
-      - "8083:8080"
     environment:
       NODE_ID:       "00000000-0000-0000-0000-000000000003"
       NATS_URL:      "nats://nats:4222"
@@ -103,13 +106,13 @@ services:
       retries: 3
       start_period: 20s
 
-  # ── ADP adapters (one per node) ────────────────────────────────────────
+  # ── ADP adapters (internal only) ─────────────────────────────────────────────
   adp-adapter-1:
     image: cndrbrbr/orbital2core-adp:latest
     restart: unless-stopped
     environment:
       ORBITAL_SERVER: "http://orbital-node1:8080"
-      ADP_LISTEN:  ":9180"
+      ADP_LISTEN:     ":9180"
     networks: [sim]
     depends_on:
       orbital-node1:
@@ -126,7 +129,7 @@ services:
     restart: unless-stopped
     environment:
       ORBITAL_SERVER: "http://orbital-node2:8080"
-      ADP_LISTEN:  ":9180"
+      ADP_LISTEN:     ":9180"
     networks: [sim]
     depends_on:
       orbital-node2:
@@ -143,7 +146,7 @@ services:
     restart: unless-stopped
     environment:
       ORBITAL_SERVER: "http://orbital-node3:8080"
-      ADP_LISTEN:  ":9180"
+      ADP_LISTEN:     ":9180"
     networks: [sim]
     depends_on:
       orbital-node3:
@@ -155,18 +158,16 @@ services:
       retries: 3
       start_period: 5s
 
-  # ── Simulation agents (one per node) ───────────────────────────────────────
+  # ── Simulation agents (internal only, accessed via Caddy) ────────────────────
   sim-agent-1:
     image: cndrbrbr/testo2c-sim-agent:latest
     restart: unless-stopped
-    ports:
-      - "9201:9200"
     environment:
       AGENT_ID:          "1"
       OWN_ORBITAL_URL:   "http://orbital-node1:8080"
       ALL_ORBITAL_URLS:  "http://orbital-node1:8080,http://orbital-node2:8080,http://orbital-node3:8080"
       PEER_ORBITAL_URLS: "http://orbital-node2:8080,http://orbital-node3:8080"
-      PEER_ADP_URLS:  "http://adp-adapter-2:9180,http://adp-adapter-3:9180"
+      PEER_ADP_URLS:     "http://adp-adapter-2:9180,http://adp-adapter-3:9180"
       SCENARIO:          "central-europe"
       SIM_INTERVAL:      "3"
       SIM_BURST:         "10"
@@ -183,14 +184,12 @@ services:
   sim-agent-2:
     image: cndrbrbr/testo2c-sim-agent:latest
     restart: unless-stopped
-    ports:
-      - "9202:9200"
     environment:
       AGENT_ID:          "2"
       OWN_ORBITAL_URL:   "http://orbital-node2:8080"
       ALL_ORBITAL_URLS:  "http://orbital-node1:8080,http://orbital-node2:8080,http://orbital-node3:8080"
       PEER_ORBITAL_URLS: "http://orbital-node1:8080,http://orbital-node3:8080"
-      PEER_ADP_URLS:  "http://adp-adapter-1:9180,http://adp-adapter-3:9180"
+      PEER_ADP_URLS:     "http://adp-adapter-1:9180,http://adp-adapter-3:9180"
       SCENARIO:          "central-europe"
       SIM_INTERVAL:      "3"
       SIM_BURST:         "10"
@@ -207,14 +206,12 @@ services:
   sim-agent-3:
     image: cndrbrbr/testo2c-sim-agent:latest
     restart: unless-stopped
-    ports:
-      - "9203:9200"
     environment:
       AGENT_ID:          "3"
       OWN_ORBITAL_URL:   "http://orbital-node3:8080"
       ALL_ORBITAL_URLS:  "http://orbital-node1:8080,http://orbital-node2:8080,http://orbital-node3:8080"
       PEER_ORBITAL_URLS: "http://orbital-node1:8080,http://orbital-node2:8080"
-      PEER_ADP_URLS:  "http://adp-adapter-1:9180,http://adp-adapter-2:9180"
+      PEER_ADP_URLS:     "http://adp-adapter-1:9180,http://adp-adapter-2:9180"
       SCENARIO:          "central-europe"
       SIM_INTERVAL:      "3"
       SIM_BURST:         "10"
@@ -228,10 +225,36 @@ services:
       adp-adapter-2:
         condition: service_healthy
 
+  # ── Caddy TLS proxy ──────────────────────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "35581:35581"   # HTTPS → orbital-node1
+      - "35582:35582"   # HTTPS → orbital-node2
+      - "35583:35583"   # HTTPS → orbital-node3
+      - "35591:35591"   # HTTPS → sim-agent-1 control
+      - "35592:35592"   # HTTPS → sim-agent-2 control
+      - "35593:35593"   # HTTPS → sim-agent-3 control
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [sim]
+    depends_on:
+      orbital-node1:
+        condition: service_healthy
+      orbital-node2:
+        condition: service_healthy
+      orbital-node3:
+        condition: service_healthy
+
 volumes:
   node1-data:
   node2-data:
   node3-data:
+  caddy-data:
+  caddy-config:
 
 networks:
   sim:

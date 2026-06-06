@@ -1,0 +1,48 @@
+# testo2c — Caddy TLS reverse proxy
+#
+# Each service gets its own HTTPS port (all > 35500).
+# TLS uses Caddy's built-in local CA — certificate is installed into the
+# system trust store on first start (Linux) automatically.
+# On other systems run once:  docker compose exec caddy caddy trust
+#
+# Port map:
+#   35581 → orbital-node1   (OrbitalC2Core node 1)
+#   35582 → orbital-node2   (OrbitalC2Core node 2)
+#   35583 → orbital-node3   (OrbitalC2Core node 3)
+#   35591 → sim-agent-1     (simulation control API)
+#   35592 → sim-agent-2
+#   35593 → sim-agent-3
+
+{
+    admin off
+}
+
+localhost:35581 {
+    tls internal
+    reverse_proxy orbital-node1:8080
+}
+
+localhost:35582 {
+    tls internal
+    reverse_proxy orbital-node2:8080
+}
+
+localhost:35583 {
+    tls internal
+    reverse_proxy orbital-node3:8080
+}
+
+localhost:35591 {
+    tls internal
+    reverse_proxy sim-agent-1:9200
+}
+
+localhost:35592 {
+    tls internal
+    reverse_proxy sim-agent-2:9200
+}
+
+localhost:35593 {
+    tls internal
+    reverse_proxy sim-agent-3:9200
+}
