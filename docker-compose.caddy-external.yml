@@ -1,0 +1,30 @@
+# Caddy override — external mode (Let's Encrypt, production)
+#
+# Requires the caddy-proxy stack to be running first:
+#   cd ../caddy-proxy && docker compose up -d
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.caddy-external.yml up
+
+services:
+  orbital-node1:
+    networks: [sim, proxy]
+
+  orbital-node2:
+    networks: [sim, proxy]
+
+  orbital-node3:
+    networks: [sim, proxy]
+
+  sim-agent-1:
+    networks: [sim, proxy]
+
+  sim-agent-2:
+    networks: [sim, proxy]
+
+  sim-agent-3:
+    networks: [sim, proxy]
+
+networks:
+  proxy:
+    external: true

@@ -1,0 +1,44 @@
+# Caddy override — internal mode (self-signed, local dev / LAN)
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.caddy-internal.yml up
+#
+# Service URLs (HTTPS, self-signed):
+#   https://localhost:35581/app/        OrbitalC2Core node 1
+#   https://localhost:35582/app/        OrbitalC2Core node 2
+#   https://localhost:35583/app/        OrbitalC2Core node 3
+#   https://localhost:35591/sim/status  sim-agent-1 control
+#   https://localhost:35592/sim/status  sim-agent-2 control
+#   https://localhost:35593/sim/status  sim-agent-3 control
+#
+# To trust the self-signed CA once:
+#   docker compose -f docker-compose.yml -f docker-compose.caddy-internal.yml \
+#     exec caddy caddy trust
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "35581:35581"
+      - "35582:35582"
+      - "35583:35583"
+      - "35591:35591"
+      - "35592:35592"
+      - "35593:35593"
+    volumes:
+      - ./Caddyfile.internal:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [sim]
+    depends_on:
+      orbital-node1:
+        condition: service_healthy
+      orbital-node2:
+        condition: service_healthy
+      orbital-node3:
+        condition: service_healthy
+
+volumes:
+  caddy-data:
+  caddy-config:
