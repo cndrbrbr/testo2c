@@ -397,7 +397,7 @@ The simulation agent is a self-contained Go binary. It imports `orbitalc2core/re
 
 ## Sync Verification — 2026-06-06
 
-Tested against `cndrbrbr/orbital2core:865204a` (commit `865204a` — rename basemap button label to 'Map').
+Tested against `cndrbrbr/orbital2core:1d1076b` (commit `1d1076b` — responsive mobile layout with slide-in drawer).
 
 **Setup:** `docker compose up` on a single host; fresh volumes, all services started from scratch.
 
