@@ -364,6 +364,36 @@ The simulation agent is a self-contained Go binary. It imports `orbitalc2core/re
 
 ---
 
+## Sync Verification — 2026-06-06
+
+Tested against `cndrbrbr/orbital2core:0f1a0f3` (commit `0f1a0f3` — fixes inter-node NATS sync).
+
+**Setup:** `docker compose up` on a single host; fresh volumes, all services started from scratch.
+
+**Cluster startup:** All 10 services (NATS, 3 nodes, 3 ADP adapters, 3 sim agents) became healthy without intervention.
+
+**Initial convergence** (measured ~15 s after startup):
+
+| Node | Layer 1 features | Layer 2 features | Layer 3 features |
+|------|-----------------|-----------------|-----------------|
+| node 1 `:8081` | 3 | 3 | 3 |
+| node 2 `:8082` | 3 | 3 | 3 |
+| node 3 `:8083` | 3 | 3 | 3 |
+
+All three nodes reached identical state. Each node holds features owned by all three sim agents, including agents whose layers were created on other nodes.
+
+**Live update propagation** — feature `00000000-0002-0000-0000-000000000000` (owned by sim-agent-2, layer 2) observed on node 1 and node 3 over 15 s:
+
+| t | node 1 version | node 3 version |
+|---|---------------|---------------|
+| +5 s | 1780754091719 | 1780754091719 |
+| +10 s | 1780754101559 | 1780754101559 |
+| +15 s | 1780754111442 | 1780754111443 |
+
+Versions advance in lock-step across nodes that do not own the feature, confirming that NATS-delivered updates from sim-agent-2 are applied correctly on both peers within each 5 s polling window.
+
+---
+
 ## License
 
 Work in progress — license TBD.
