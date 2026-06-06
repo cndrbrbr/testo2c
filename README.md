@@ -251,25 +251,46 @@ Delivery results are tracked per-peer:
 
 ## Quick Start
 
+All images are available pre-built on Docker Hub — no local checkout of orbitalc2core required.
+
 ```bash
-# All images are available pre-built on Docker Hub (linux/amd64 + linux/arm64).
-# docker compose up --build pulls them automatically — no local orbitalc2core
-# checkout required unless you want to build from source.
 git clone git@github.com:cndrbrbr/testo2c.git
-
 cd testo2c
-docker compose up
+```
 
-# Node UIs
-open http://localhost:8081   # node 1
-open http://localhost:8082   # node 2
-open http://localhost:8083   # node 3
+### Option A — Internal Caddy (local dev, self-signed TLS)
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.caddy-internal.yml up
+
+# Node UIs (accept the self-signed cert warning, or run: docker compose ... exec caddy caddy trust)
+open https://localhost:35581/app/   # node 1
+open https://localhost:35582/app/   # node 2
+open https://localhost:35583/app/   # node 3
 
 # Agent control APIs
-curl http://localhost:9201/sim/status   # agent 1 status
-curl -X POST http://localhost:9201/sim/stop   # pause agent 1
-curl -X POST http://localhost:9201/sim/step   # run one cycle manually
-curl -X POST http://localhost:9201/sim/reset  # clear and restart
+curl -k https://localhost:35591/sim/status   # agent 1
+curl -kX POST https://localhost:35591/sim/stop
+curl -kX POST https://localhost:35591/sim/step
+curl -kX POST https://localhost:35591/sim/reset
+```
+
+### Option B — External Caddy (production, Let's Encrypt)
+
+Start the shared [caddy-proxy](https://github.com/cndrbrbr/caddy-proxy) stack first, then:
+
+```bash
+# 1. Start the shared proxy (once per server, not per stack)
+git clone git@github.com:cndrbrbr/caddy-proxy.git
+cd caddy-proxy && docker compose up -d && cd ../testo2c
+
+# 2. Start testo2c without its own Caddy
+docker compose -f docker-compose.yml -f docker-compose.caddy-external.yml up
+
+# Node UIs (valid Let's Encrypt cert)
+open https://o2c.codefield.de:35581/app/   # node 1
+open https://o2c.codefield.de:35582/app/   # node 2
+open https://o2c.codefield.de:35583/app/   # node 3
 ```
 
 Change the scenario:
@@ -344,14 +365,19 @@ basemaps:
 ```
 testo2c/
 ├── cmd/
-│   └── sim-agent/          # Simulation agent binary entry point
+│   └── sim-agent/              # Simulation agent binary entry point
 │       └── main.go
 ├── deploy/
 │   └── Dockerfile.sim-agent
-├── basemaps.yaml           # Selectable base map tile sources (mounted into all nodes)
-├── docker-compose.yml
+├── basemaps.yaml               # Selectable base map tile sources (mounted into all nodes)
+├── docker-compose.yml              # Base stack — no Caddy, no exposed ports
+├── docker-compose.caddy-internal.yml  # Override: internal Caddy, self-signed TLS (dev)
+├── docker-compose.caddy-external.yml  # Override: join external proxy network (production)
+├── Caddyfile.internal          # Caddy config for internal mode
 └── README.md
 ```
+
+The TLS proxy for production is managed separately in [cndrbrbr/caddy-proxy](https://github.com/cndrbrbr/caddy-proxy).
 
 The simulation agent is a self-contained Go binary. It imports `orbitalc2core/remotecontrol/client` and `orbitalc2core/messages/adp` as Go module dependencies; the `go.mod` references the sibling directory via a `replace` directive for local development and the GitHub URL for production builds.
 
