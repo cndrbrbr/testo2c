@@ -3,9 +3,9 @@
 Simulation and integration-test harness for [OrbitalC2Core](https://github.com/cndrbrbr/orbitalc2core).
 
 > **Live demo** — the cluster is running at:
-> - Node 1: https://o2c.meckminecraft.de:35581/app/
-> - Node 2: https://o2c.meckminecraft.de:35582/app/
-> - Node 3: https://o2c.meckminecraft.de:35583/app/
+> - Node 1: https://o2c.codefield.de:35581/app/
+> - Node 2: https://o2c.codefield.de:35582/app/
+> - Node 3: https://o2c.codefield.de:35583/app/
 
 ![testo2c running — NATO tactical symbols on the Hesse/Rhön map](screenshot.png)
 
