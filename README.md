@@ -293,6 +293,27 @@ open https://o2c.codefield.de:35582/app/   # node 2
 open https://o2c.codefield.de:35583/app/   # node 3
 ```
 
+### Option C — No Caddy (plain HTTP, local dev)
+
+Skip TLS entirely and publish each node and sim-agent directly on host ports — handy for quick local runs where you don't want to deal with the Caddy local CA or trusting a hostname:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.no-caddy.yml up -d
+
+# Node UIs (plain HTTP, no cert warnings)
+open http://localhost:8081/app/   # node 1
+open http://localhost:8082/app/   # node 2
+open http://localhost:8083/app/   # node 3
+
+# Agent control APIs
+curl http://localhost:9201/sim/status   # agent 1
+curl -X POST http://localhost:9201/sim/stop
+curl -X POST http://localhost:9201/sim/step
+curl -X POST http://localhost:9201/sim/reset
+```
+
+Or simply run `bash setup.sh --no-caddy`, which brings the cluster up this way and prints the URLs once it's healthy.
+
 Change the scenario:
 
 ```bash
@@ -373,7 +394,9 @@ testo2c/
 ├── docker-compose.yml              # Base stack — no Caddy, no exposed ports
 ├── docker-compose.caddy-internal.yml  # Override: internal Caddy, self-signed TLS (dev)
 ├── docker-compose.caddy-external.yml  # Override: join external proxy network (production)
+├── docker-compose.no-caddy.yml     # Override: direct port mapping, plain HTTP, no TLS (local dev)
 ├── Caddyfile.internal          # Caddy config for internal mode
+├── setup.sh                    # Bring up the cluster (Caddy/TLS by default, or --no-caddy for plain HTTP)
 └── README.md
 ```
 
