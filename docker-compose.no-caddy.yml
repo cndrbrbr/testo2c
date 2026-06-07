@@ -1,0 +1,56 @@
+# testo2c — direct port-mapping override (no Caddy / no TLS)
+#
+# Publishes each service straight onto the host over plain HTTP — handy for
+# local development where you don't want to deal with TLS, the Caddy local CA,
+# or trusting a hostname. Combine with the base stack:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.no-caddy.yml up -d
+#
+# (setup.sh --no-caddy does this for you.)
+#
+# Port map (matches the table in README.md):
+#   8081 → orbital-node1     9181 → adp-adapter-1     9201 → sim-agent-1
+#   8082 → orbital-node2     9182 → adp-adapter-2     9202 → sim-agent-2
+#   8083 → orbital-node3     9183 → adp-adapter-3     9203 → sim-agent-3
+#
+# After `up`, the cluster is reachable at:
+#   http://localhost:8081/app/   node 1
+#   http://localhost:8082/app/   node 2
+#   http://localhost:8083/app/   node 3
+
+services:
+  orbital-node1:
+    ports:
+      - "8081:8080"
+
+  orbital-node2:
+    ports:
+      - "8082:8080"
+
+  orbital-node3:
+    ports:
+      - "8083:8080"
+
+  adp-adapter-1:
+    ports:
+      - "9181:9180"
+
+  adp-adapter-2:
+    ports:
+      - "9182:9180"
+
+  adp-adapter-3:
+    ports:
+      - "9183:9180"
+
+  sim-agent-1:
+    ports:
+      - "9201:9200"
+
+  sim-agent-2:
+    ports:
+      - "9202:9200"
+
+  sim-agent-3:
+    ports:
+      - "9203:9200"

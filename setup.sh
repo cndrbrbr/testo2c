@@ -3,16 +3,22 @@
 #
 # Usage:
 #   bash setup.sh [HOSTNAME]
+#   bash setup.sh --no-caddy
 #
-# HOSTNAME  The hostname or IP Caddy should bind to and include in its TLS
-#           certificate SAN.  Defaults to "localhost".
+# HOSTNAME    The hostname or IP Caddy should bind to and include in its TLS
+#             certificate SAN.  Defaults to "localhost".
+# --no-caddy  Skip Caddy/TLS entirely — publish each node and sim-agent
+#             directly on plain HTTP host ports (see docker-compose.no-caddy.yml).
+#             Use this for quick local runs where you don't want to deal with
+#             TLS, the Caddy local CA, or trusting a hostname.
 #
 # Examples:
-#   bash setup.sh                     # local machine (localhost)
-#   bash setup.sh 192.168.1.42        # LAN IP
-#   bash setup.sh testo2c.example.com # domain name
+#   bash setup.sh                     # local machine (localhost), via Caddy/TLS
+#   bash setup.sh 192.168.1.42        # LAN IP, via Caddy/TLS
+#   bash setup.sh testo2c.example.com # domain name, via Caddy/TLS
+#   bash setup.sh --no-caddy          # local machine, plain HTTP, no TLS
 #
-# After running, the cluster is up and accessible at:
+# With Caddy (default), the cluster is up and accessible at:
 #   https://<HOSTNAME>:35581/app/    node 1
 #   https://<HOSTNAME>:35582/app/    node 2
 #   https://<HOSTNAME>:35583/app/    node 3
@@ -23,12 +29,61 @@
 # TLS uses Caddy's built-in local CA.  This script installs the CA cert into
 # the system trust store (Chrome/Chromium pick it up automatically).
 # Firefox requires a one-time manual import — instructions are printed below.
+#
+# With --no-caddy, the cluster is up and accessible at:
+#   http://localhost:8081/app/       node 1
+#   http://localhost:8082/app/       node 2
+#   http://localhost:8083/app/       node 3
+#   http://localhost:9201/sim/status sim-agent-1 control
+#   http://localhost:9202/sim/status sim-agent-2 control
+#   http://localhost:9203/sim/status sim-agent-3 control
 
 set -euo pipefail
 
-HOSTNAME="${1:-localhost}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CA_CERT_PATH="/tmp/caddy-testo2c-root.crt"
+
+NO_CADDY=false
+HOSTNAME="localhost"
+for arg in "$@"; do
+    case "${arg}" in
+        --no-caddy) NO_CADDY=true ;;
+        *)          HOSTNAME="${arg}" ;;
+    esac
+done
+
+# ── No-Caddy path: plain HTTP, direct port mapping, no TLS ───────────────────
+if ${NO_CADDY}; then
+    echo "=== testo2c setup (no Caddy / plain HTTP) ==="
+    echo "Ports : 8081-8083 (nodes), 9181-9183 (adp-adapters), 9201-9203 (sim agents)"
+    echo
+
+    cd "${SCRIPT_DIR}"
+    docker compose -f docker-compose.yml -f docker-compose.no-caddy.yml down --remove-orphans 2>/dev/null || true
+    docker compose -f docker-compose.yml -f docker-compose.no-caddy.yml up -d
+
+    echo
+    echo "Waiting for node 1 to become healthy..."
+    for i in $(seq 1 30); do
+        if curl -s "http://localhost:8081/healthz" 2>/dev/null | grep -q ok; then
+            break
+        fi
+        sleep 2
+    done
+
+    echo
+    echo "=== Cluster ready (plain HTTP, no TLS) ==="
+    echo "  Node 1 : http://localhost:8081/app/"
+    echo "  Node 2 : http://localhost:8082/app/"
+    echo "  Node 3 : http://localhost:8083/app/"
+    echo "  Sim  1 : http://localhost:9201/sim/status"
+    echo "  Sim  2 : http://localhost:9202/sim/status"
+    echo "  Sim  3 : http://localhost:9203/sim/status"
+    echo
+    echo "Tear down with:"
+    echo "  docker compose -f docker-compose.yml -f docker-compose.no-caddy.yml down"
+    exit 0
+fi
 
 echo "=== testo2c setup ==="
 echo "Hostname : ${HOSTNAME}"
