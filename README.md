@@ -397,6 +397,7 @@ testo2c/
 ├── docker-compose.no-caddy.yml     # Override: direct port mapping, plain HTTP, no TLS (local dev)
 ├── Caddyfile.internal          # Caddy config for internal mode
 ├── setup.sh                    # Bring up the cluster (Caddy/TLS by default, or --no-caddy for plain HTTP)
+├── architecture-decisions.md   # ADRs — non-obvious config/operational decisions and the incidents behind them
 └── README.md
 ```
 
@@ -415,6 +416,18 @@ The simulation agent is a self-contained Go binary. It imports `orbitalc2core/re
 | Simulation agent image | Built from `deploy/Dockerfile.sim-agent`; pre-built at [`cndrbrbr/testo2c-sim-agent`](https://hub.docker.com/r/cndrbrbr/testo2c-sim-agent) |
 | NATS | `nats:2-alpine` (Docker Hub) |
 | Go | 1.22+ (agent only, `CGO_ENABLED=0`) |
+
+---
+
+## Symbol-Visibility Fix Verification — 2026-06-08
+
+Tested against `cndrbrbr/orbital2core:1d1076b` (unchanged) and the rebuilt `cndrbrbr/testo2c-sim-agent:4af3631` (commit `4af3631` — fix: align scenario map center with actual unit spawn area; see [ADR-001](architecture-decisions.md)).
+
+A fresh page load now renders 12 000+ tactical-symbol draw calls, and units
+(blue friendly rectangles, red hostile diamond, track-history dots) appear
+correctly within the default map view — confirming that the `center` /
+`MAP_CENTER` mismatch documented in ADR-001 was the cause of the "tactical
+symbols not visible" regression, and that the fix resolves it.
 
 ---
 
