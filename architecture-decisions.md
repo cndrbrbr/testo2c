@@ -4,7 +4,7 @@
 
 **Date:** 2026-06-08
 **Status:** Accepted
-**Commit:** `4af3631` — fix: align scenario map center with actual unit spawn area
+**Commit:** `fbdd439` — fix: align scenario map center with actual unit spawn area
 
 ### Context
 

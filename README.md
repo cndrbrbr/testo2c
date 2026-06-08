@@ -421,7 +421,7 @@ The simulation agent is a self-contained Go binary. It imports `orbitalc2core/re
 
 ## Symbol-Visibility Fix Verification — 2026-06-08
 
-Tested against `cndrbrbr/orbital2core:1d1076b` (unchanged) and the rebuilt `cndrbrbr/testo2c-sim-agent:4af3631` (commit `4af3631` — fix: align scenario map center with actual unit spawn area; see [ADR-001](architecture-decisions.md)).
+Tested against `cndrbrbr/orbital2core:1d1076b` (unchanged) and the rebuilt `cndrbrbr/testo2c-sim-agent:fbdd439` (commit `fbdd439` — fix: align scenario map center with actual unit spawn area; see [ADR-001](architecture-decisions.md)).
 
 A fresh page load now renders 12 000+ tactical-symbol draw calls, and units
 (blue friendly rectangles, red hostile diamond, track-history dots) appear
