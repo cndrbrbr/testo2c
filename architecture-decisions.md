@@ -85,7 +85,16 @@ ADR-001, was itself the proximate cause of the symbol-visibility regression).
 
 ### Consequences
 
-`restartc.sh` (and its hourly cron) should be reserved for situations that
-genuinely require a full `down`/`up` cycle — e.g. recovering from a stuck
-network attachment. Routine image/config updates should use the targeted
-`up -d --no-deps` form instead.
+`restartc.sh` should be reserved for situations that genuinely require a full
+`down`/`up` cycle — e.g. recovering from a stuck network attachment. Routine
+image/config updates should use the targeted `up -d --no-deps` form instead.
+
+**Update — 2026-06-08:** the hourly cron invoking `restartc.sh` (`0 * * * *
+/root/testo2c/restartc.sh`) has been removed. It was running the full
+down/up cycle on a fixed schedule "just in case", but per ADR-001 this
+re-triggered each sim-agent's startup routine — including the map-center
+push — every hour, turning a one-time setup quirk into a recurring
+symbol-visibility regression. With ADR-001 fixed and the cluster's own
+`restart: unless-stopped` + healthchecks handling crash recovery,
+`restartc.sh` is no longer needed on a schedule; run it manually only if the
+cluster is observed to have actually wedged itself off the proxy network.

@@ -16,6 +16,14 @@
 #   bash restartc.sh
 #
 # Requires the caddy-proxy stack (cndrbrbr/caddy-proxy) to already be running.
+#
+# NOTE: this is a recovery tool for when the cluster has actually wedged
+# itself off the proxy network — it is NOT meant to be run on a schedule.
+# An hourly cron running this was removed on 2026-06-08: the full down/up
+# cycle re-runs each sim-agent's startup routine (which re-pushes the
+# scenario's map center to every connected UI), and was the proximate cause
+# of a "tactical symbols not visible" regression. See ADR-001/ADR-002 in
+# architecture-decisions.md.
 
 set -euo pipefail
 
