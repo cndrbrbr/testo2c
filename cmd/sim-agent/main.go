@@ -58,7 +58,12 @@ type scenario struct {
 
 var scenarioMap = map[string]*scenario{
 	"central-europe": {
-		name: "Central Europe", center: [2]float64{51.163375, 10.447683},
+		// center must line up with where units actually spawn/operate — see
+		// newAgent's spawn formula (bounds-relative offsets), whose mean
+		// resolves to roughly (50.15, 9.25). A mismatched center here gets
+		// pushed to all UIs via /v1/map/center on every agent startup,
+		// re-centering everyone's view away from the units.
+		name: "Central Europe", center: [2]float64{50.15, 9.25},
 		bounds: bbox{47, 55, 6, 15}, maxSpeedM: 2000,
 		defs: [3]unitDef{
 			{name: "1PzGrenBtl212", sidc: "SFGPUCI--------", side: "FRIENDLY", echelon: "BATTALION", equip: "3XIFV,2XHMMWV"},

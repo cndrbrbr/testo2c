@@ -32,7 +32,7 @@ services:
     environment:
       NODE_ID:       "00000000-0000-0000-0000-000000000001"
       NATS_URL:      "nats://nats:4222"
-      MAP_CENTER:    "51.163375,10.447683"
+      MAP_CENTER:    "50.15,9.25"
       SIT_ID:        "sim"
       BASEMAPS_FILE: "/basemaps.yaml"
     volumes:
@@ -55,7 +55,7 @@ services:
     environment:
       NODE_ID:       "00000000-0000-0000-0000-000000000002"
       NATS_URL:      "nats://nats:4222"
-      MAP_CENTER:    "51.163375,10.447683"
+      MAP_CENTER:    "50.15,9.25"
       SIT_ID:        "sim"
       BASEMAPS_FILE: "/basemaps.yaml"
     volumes:
@@ -78,7 +78,7 @@ services:
     environment:
       NODE_ID:       "00000000-0000-0000-0000-000000000003"
       NATS_URL:      "nats://nats:4222"
-      MAP_CENTER:    "51.163375,10.447683"
+      MAP_CENTER:    "50.15,9.25"
       SIT_ID:        "sim"
       BASEMAPS_FILE: "/basemaps.yaml"
     volumes:
